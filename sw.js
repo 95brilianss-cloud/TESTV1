@@ -1,4 +1,4 @@
-const CACHE_NAME = 'turbine-v5-cache'; 
+const CACHE_NAME = 'turbine-v4-cache'; 
 const assets = ['./', './index.html', './style.css', './manifest.json'];
 
 self.addEventListener('install', e => {
