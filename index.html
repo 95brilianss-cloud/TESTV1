@@ -104,30 +104,31 @@ function navigateTo(id) {
 function fetchLastData() {
     if(GAS_URL.includes("GANTI_DENGAN")) return;
 
-    // Tambahkan timeout agar loader tidak macet selamanya
-    const timer = setTimeout(() => {
-        document.getElementById('loader').style.display = 'none';
-        console.log("Sinkronisasi timeout, melanjutkan...");
+    // 1. Tambahkan timer 5 detik (Timeout)
+    const timeout = setTimeout(() => {
+        console.warn("Sinkronisasi timeout, melanjutkan ke mode offline...");
+        document.getElementById('loader').style.display = 'none'; // Paksa loader hilang
+        renderMenu(); // Tetap tampilkan menu
     }, 5000); 
 
     const cb = 'jsonp_' + Date.now();
     const s = document.createElement('script');
     
     window[cb] = (d) => { 
-        clearTimeout(timer); // Matikan timer jika sukses
+        clearTimeout(timeout); // Hentikan timer jika sukses
         lastData = d; 
         document.getElementById('statusDot').classList.add('online');
         document.getElementById('statusText').innerText = "Online";
         delete window[cb]; s.remove();
-        document.getElementById('loader').style.display = 'none'; // Sembunyikan loader
+        document.getElementById('loader').style.display = 'none'; // Loader hilang
         renderMenu();
     };
 
     s.src = `${GAS_URL}?callback=${cb}`;
     s.onerror = () => { 
-        clearTimeout(timer);
-        document.getElementById('loader').style.display = 'none';
-        console.log("Gagal memuat data dari server");
+        clearTimeout(timeout);
+        document.getElementById('loader').style.display = 'none'; // Loader hilang
+        renderMenu();
     };
     document.body.appendChild(s);
 }
