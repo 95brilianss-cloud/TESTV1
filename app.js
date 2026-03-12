@@ -18,7 +18,7 @@ const AREAS = {
 };
 
 // State & Konfigurasi
-const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbx3hM7m8_yBkbOTz3IN0lCTCFrDyGcNnTwM7RG5P4Wbmna5i2ldlbrhlijj4xl_Yhi_/exec";
+const DEFAULT_URL = "https://script.google.com/macros/s/AKfycby4-62JN53rvEu26qLE0Olne-OW8Wz8MVyizFQeB0etwuq4JRJ1SknpWy2JI5JOd1SD/exec";
 let GAS_URL = localStorage.getItem('gas_url_custom') || DEFAULT_URL;
 let lastData = {}, currentInput = JSON.parse(localStorage.getItem('draft_turbine')) || {}, activeArea = "", activeIdx = 0;
 
