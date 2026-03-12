@@ -74,26 +74,23 @@ function closeAlert() { document.getElementById('customAlert').classList.add('hi
 async function fetchLastData() {
     const loader = document.getElementById('loader');
     loader.style.display = 'flex';
-    
+
+    // Tambahkan timer pengaman (10 detik)
+    const timeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 10000)
+    );
+
     try {
-        const response = await fetch(GAS_URL);
-        if (!response.ok) throw new Error('Server Error');
+        const response = await Promise.race([fetch(GAS_URL + "?t=" + new Date().getTime()), timeout]);
         const data = await response.json();
-        
-        // Simpan data
         lastData = data;
         document.getElementById('statusPill').innerText = "Online";
-        
-        // DEBUG: Cek apa yang diterima
-        console.log("Data diterima:", data);
-        
     } catch (e) {
         console.error("Sinkronisasi gagal:", e);
         document.getElementById('statusPill').innerText = "Offline Mode";
     } finally {
-        // PAKSA HILANGKAN LOADER APA PUN HASILNYA
-        loader.style.display = 'none';
-        renderMenu(); // Pastikan menu dirender setelah fetch
+        loader.style.display = 'none'; // Loader dijamin mati
+        renderMenu();
     }
 }
 // Render Menu
