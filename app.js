@@ -4,7 +4,7 @@
 
 // 1. DATA & KONFIGURASI
 const AREAS = {
-    "Steam Inlet Turbine": ["Low Pressure Steam": ["LPS from U-6101 PI-6104 (kg/cm2)", "LPS from U-6101 TI-6102 (°C)", "LPS Header PI-6106 (Kg/cm2)", "LPS Header TI-6107 (°C)"]
+    "Low Pressure Steam": ["LPS from U-6101 PI-6104 (kg/cm2)", "LPS from U-6101 TI-6102 (°C)", "LPS Header PI-6106 (Kg/cm2)", "LPS Header TI-6107 (°C)"]
 };
 
 const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbzfWhyDf8vVlEkHhLu8qxUWcyP-0iNIjAMr_EuoBAkz_BMafJSF8fST3xdlfX9eiXs/exec";
