@@ -4,20 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#f8fafc">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Log Turbine">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5971/5971591.png">
+    
     <title>Turbine Logsheet Pro</title>
     
     <script>
         const v = new Date().getTime();
         document.write(`<link rel="stylesheet" href="style.css?t=${v}">`);
     </script>
-    
-    <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="data:,">
 </head>
 <body>
 
 <div id="loader" class="loader-overlay">
-    <div style="width: 45px; height: 45px; border: 4px solid var(--primary); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+    <div class="spinner"></div>
     <p style="margin-top: 20px; font-weight: 500;">Sinkronisasi Data...</p>
 </div>
 
@@ -33,7 +37,7 @@
     <div id="homeScreen" class="screen active">
         <div class="home-hero" style="text-align: center; padding: 40px 0;">
             <div style="font-size: 50px; margin-bottom: 10px;">⚙️</div>
-            <h1>Turbine System</h1>
+            <h1>Log Turbine</h1>
             <p style="color: var(--text-muted);">III B - PT Petrokimia Gresik</p>
         </div>
         <div class="area-item" onclick="navigateTo('areaListScreen')">
@@ -44,6 +48,10 @@
             <div><b>Pengaturan</b><br><small>Konfigurasi URL</small></div>
             <div>🛠️</div>
         </div>
+        
+        <button id="installBtn" class="btn btn-outline" style="width:100%; margin-top:20px; display:none; border: 1px solid var(--primary); color: var(--primary);">
+            📥 Install Aplikasi
+        </button>
     </div>
 
     <div id="areaListScreen" class="screen">
@@ -53,7 +61,7 @@
             <div class="badge" id="statusPill">Offline</div>
         </div>
         <div id="areaList"></div>
-        <button class="btn btn-primary" id="submitBtn" style="display:none; margin-top:20px;" onclick="sendToSheet()">🚀 KIRIM DATA</button>
+        <button class="btn btn-primary" id="submitBtn" style="display:none; margin-top:20px; width:100%;" onclick="sendToSheet()">🚀 KIRIM DATA</button>
     </div>
 
     <div id="paramScreen" class="screen">
@@ -76,8 +84,8 @@
                 Waktu: <b style="color:var(--text-main)" id="lastTimeLabel">--:--</b>
             </div>
             
-            <button class="btn btn-primary" onclick="saveStep()">SIMPAN & LANJUT ➔</button>
-            <button class="btn btn-outline" style="margin-top: 12px;" onclick="goBack()">← KEMBALI</button>
+            <button class="btn btn-primary" style="width:100%;" onclick="saveStep()">SIMPAN & LANJUT ➔</button>
+            <button class="btn btn-outline" style="width:100%; margin-top: 12px;" onclick="goBack()">← KEMBALI</button>
         </div>
     </div>
 
@@ -85,12 +93,15 @@
         <h2>Configuration</h2>
         <p style="color: var(--text-muted); font-size: 14px;">URL Deployment Google Script:</p>
         <input type="text" id="gasUrlInput" class="main-input" placeholder="https://script.google.com/macros/s/.../exec">
-        <button class="btn btn-primary" style="margin-top:20px;" onclick="saveSettings()">Simpan</button>
-        <button class="btn btn-outline" style="margin-top:10px;" onclick="navigateTo('homeScreen')">Kembali</button>
+        <button class="btn btn-primary" style="margin-top:20px; width:100%;" onclick="saveSettings()">Simpan</button>
+        <button class="btn btn-outline" style="margin-top:10px; width:100%;" onclick="navigateTo('homeScreen')">Kembali</button>
     </div>
 </div>
 
+
+
 <script>
+    // Load app.js dengan timestamp untuk menghindari cache browser
     document.write(`<script src="app.js?t=${new Date().getTime()}"><\/script>`);
 </script>
 
