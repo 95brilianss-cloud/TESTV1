@@ -74,22 +74,50 @@ function closeAlert() { document.getElementById('customAlert').classList.add('hi
 async function fetchLastData() {
     const loader = document.getElementById('loader');
     loader.style.display = 'flex';
-
-    // Tambahkan timer pengaman (10 detik)
-    const timeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout')), 10000)
-    );
+    
+    // Controller untuk abort fetch jika timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-        const response = await Promise.race([fetch(GAS_URL + "?t=" + new Date().getTime()), timeout]);
-        const data = await response.json();
+        const response = await fetch(GAS_URL + "?t=" + new Date().getTime(), {
+            signal: controller.signal,
+            // Tambahkan cache-busting
+            cache: 'no-store'
+        });
+        
+        clearTimeout(timeoutId);
+        
+        // ❗Periksa apakah response OK
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const text = await response.text();
+        console.log("Raw response:", text); // Debug
+        
+        // Parse JSONP atau JSON murni
+        let data;
+        if (text.includes('(') && text.includes(')')) {
+            // Format JSONP: callback({...})
+            const match = text.match(/\((.*)\)/);
+            data = JSON.parse(match[1]);
+        } else {
+            // Format JSON murni
+            data = JSON.parse(text);
+        }
+        
         lastData = data;
-        document.getElementById('statusPill').innerText = "Online";
+        document.getElementById('statusPill').innerText = "Online - " + (data._lastTime || "--:--");
+        
     } catch (e) {
         console.error("Sinkronisasi gagal:", e);
         document.getElementById('statusPill').innerText = "Offline Mode";
+        // ❗Pastikan lastData tetap ada default
+        lastData = {}; 
     } finally {
-        loader.style.display = 'none'; // Loader dijamin mati
+        clearTimeout(timeoutId);
+        loader.style.display = 'none';
         renderMenu();
     }
 }
