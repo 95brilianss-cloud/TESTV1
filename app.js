@@ -2,7 +2,7 @@
  * Departemen Operasi Pabrik III B - PT Petrokimia Gresik
  */
 
-// 1. DAFTAR PARAMETER UNIT (Database Area & Instrumen)
+// 1. DAFTAR PARAMETER UNIT
 const AREAS = {
     "Steam Inlet Turbine": ["MPS Inlet 30-TP-6101 PI-6114 (kg/cm2)", "MPS Inlet 30-TP-6101 TI-6153 (°C)", "MPS Inlet 30-TP-6101 PI-6116 (kg/cm2)", "LPS Extrac 30-TP-6101 PI-6123 (kg/cm2)", "Gland Steam TI-6156 (°C)", "MPS Inlet 30-TP-6101 PI-6108 (Kg/cm2)", "Exhaust Steam PI-6111 (kg/cm2)", "Gland Steam PI-6118 (Kg/cm2)"],
     "Low Pressure Steam": ["LPS from U-6101 PI-6104 (kg/cm2)", "LPS from U-6101 TI-6102 (°C)", "LPS Header PI-6106 (Kg/cm2)", "LPS Header TI-6107 (°C)"],
@@ -17,213 +17,119 @@ const AREAS = {
     "Chemical Dosing": ["30-TK-6205 LI-6204 (%)", "30-TK-6205 30-P-6205 (A/B)", "30-TK-6205 Disch (kg/cm2)", "30-TK-6205 Stroke (%)", "30-TK-6206 LI-6206 (%)", "30-TK-6206 30-P-6206 (A/B)", "30-TK-6206 Disch (kg/cm2)", "30-TK-6206 Stroke (%)", "30-TK-6207 LI-6208 (%)", "30-TK-6207 30-P-6207 (A/B)", "30-TK-6207 Disch (kg/cm2)", "30-TK-6207 Stroke (%)"]
 };
 
-// 2. STATE & KONFIGURASI SISTEM
+// State & Konfigurasi
 const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbx3hM7m8_yBkbOTz3IN0lCTCFrDyGcNnTwM7RG5P4Wbmna5i2ldlbrhlijj4xl_Yhi_/exec";
 let GAS_URL = localStorage.getItem('gas_url_custom') || DEFAULT_URL;
-let lastData = {}; 
-let currentInput = JSON.parse(localStorage.getItem('draft_turbine')) || {}; 
-let activeArea = ""; 
-let activeIdx = 0;
+let lastData = {}, currentInput = JSON.parse(localStorage.getItem('draft_turbine')) || {}, activeArea = "", activeIdx = 0;
 
-// 3. INISIALISASI SAAT HALAMAN DIMUAT
+// Logika Install PWA
+let deferredPrompt;
+const installBtn = document.getElementById('installBtn');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'block';
+});
+
+installBtn.addEventListener('click', (e) => {
+    installBtn.style.display = 'none';
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choiceResult) => {
+        deferredPrompt = null;
+    });
+});
+
+window.addEventListener('appinstalled', (evt) => {
+    installBtn.style.display = 'none';
+});
+
+// Inisialisasi
 window.onload = () => { 
     registerSW();
     renderMenu(); 
 };
 
-// Registrasi Service Worker untuk Mode Offline
 function registerSW() {
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js')
-            .then(() => console.log("Service Worker Active"))
-            .catch(err => console.error("SW Register Failed:", err));
+        navigator.serviceWorker.register('./sw.js').then(() => console.log("SW Active"));
     }
 }
 
-// 4. SISTEM NAVIGASI LAYAR
+// Navigasi & UI
 function navigateTo(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
-    
-    // Jika masuk ke daftar area, tarik data terakhir dari Google Sheet
     if(id === 'areaListScreen') fetchLastData();
 }
 
-// 5. NOTIFIKASI CUSTOM (Alert)
 function showCustomAlert(msg) { 
     document.getElementById('alertMessage').innerText = msg; 
     document.getElementById('customAlert').classList.remove('hidden'); 
 }
 
-function closeAlert() { 
-    document.getElementById('customAlert').classList.add('hidden'); 
-}
+function closeAlert() { document.getElementById('customAlert').classList.add('hidden'); }
 
-// 6. SYNC DATA (Ambil Data Terakhir via JSONP untuk bypass CORS)
+// Data Sync (JSONP)
 function fetchLastData() {
     const loader = document.getElementById('loader');
     loader.style.display = 'flex';
-
-    const timeout = setTimeout(() => { 
-        loader.style.display = 'none'; 
-        renderMenu(); 
-    }, 8000); 
-
     const cb = 'jsonp_' + Date.now();
     const s = document.createElement('script');
-    
     window[cb] = (d) => { 
-        clearTimeout(timeout); 
         lastData = d; 
-        const status = document.getElementById('statusPill');
-        status.innerText = "Online"; 
-        status.style.background = "#dcfce7"; 
-        status.style.color = "#166534"; 
-        delete window[cb]; 
-        s.remove(); 
-        loader.style.display = 'none';
+        document.getElementById('statusPill').innerText = "Online"; 
+        loader.style.display = 'none'; 
         renderMenu(); 
+        delete window[cb]; s.remove(); 
     };
-
     s.src = `${GAS_URL}?callback=${cb}`;
-    s.onerror = () => { 
-        clearTimeout(timeout); 
-        loader.style.display = 'none';
-        renderMenu(); 
-    };
+    s.onerror = () => { loader.style.display = 'none'; renderMenu(); };
     document.body.appendChild(s);
 }
 
-// 7. RENDERING MENU UTAMA
+// Render Menu
 function renderMenu() {
     const list = document.getElementById('areaList');
     list.innerHTML = `<h3 style="margin-bottom:20px; color: var(--text-main);">⚙️ Pilih Area TURBINE</h3>`;
-    
     Object.keys(AREAS).forEach(a => {
         const count = currentInput[a] ? Object.keys(currentInput[a]).length : 0;
-        const total = AREAS[a].length;
-        const isDone = count === total;
-
-        list.innerHTML += `
-            <div class="area-item" onclick="openArea('${a}')">
-                <div>
-                    <b>${a}</b><br>
-                    <small>${count}/${total} Parameter diisi</small>
-                </div>
-                <div class="badge" style="background: ${isDone ? '#22c55e' : '#f1f5f9'}; color: ${isDone ? 'white' : '#64748b'}">
-                    ${count}/${total}
-                </div>
-            </div>`;
+        list.innerHTML += `<div class="area-item" onclick="openArea('${a}')"><div><b>${a}</b><br><small>${count}/${AREAS[a].length} diisi</small></div><div class="badge">${count}/${AREAS[a].length}</div></div>`;
     });
-
-    // Tampilkan tombol kirim jika sudah ada data yang diinput
-    const hasData = Object.keys(currentInput).length > 0;
-    document.getElementById('submitBtn').style.display = hasData ? 'block' : 'none';
+    document.getElementById('submitBtn').style.display = Object.keys(currentInput).length > 0 ? 'block' : 'none';
 }
 
-// 8. LOGIKA INPUT STEP-BY-STEP
-function openArea(a) { 
-    activeArea = a; 
-    activeIdx = 0; 
-    navigateTo('paramScreen'); 
-    document.getElementById('currentAreaName').innerText = a; 
-    showStep(); 
-}
-
-function getUnit(label) { 
-    const match = label.match(/\(([^)]+)\)/); 
-    return match ? match[1] : ""; 
-}
+function openArea(a) { activeArea = a; activeIdx = 0; navigateTo('paramScreen'); document.getElementById('currentAreaName').innerText = a; showStep(); }
 
 function showStep() {
     const fullLabel = AREAS[activeArea][activeIdx];
-    const unit = getUnit(fullLabel);
-    
     document.getElementById('stepInfo').innerText = `STEP ${activeIdx + 1} / ${AREAS[activeArea].length}`;
     document.getElementById('labelInput').innerText = fullLabel.split(' (')[0];
-    document.getElementById('unitDisplay').innerText = unit || "--";
-    document.getElementById('lastTimeLabel').innerText = lastData._lastTime || "--:--";
+    document.getElementById('unitDisplay').innerText = (fullLabel.match(/\(([^)]+)\)/) || ["","--"])[1];
     document.getElementById('prevValDisplay').innerText = lastData[fullLabel] || "--";
-    
-    // Load data dari draft jika ada
     document.getElementById('valInput').value = (currentInput[activeArea] && currentInput[activeArea][fullLabel]) || "";
-    
-    // Auto-focus ke input
     setTimeout(() => document.getElementById('valInput').focus(), 300);
 }
 
 function saveStep() {
     const val = document.getElementById('valInput').value.trim();
-    const fullLabel = AREAS[activeArea][activeIdx];
-
     if(val) {
         if(!currentInput[activeArea]) currentInput[activeArea] = {};
-        currentInput[activeArea][fullLabel] = val;
-        // Simpan ke LocalStorage agar data tidak hilang jika browser tertutup
+        currentInput[activeArea][AREAS[activeArea][activeIdx]] = val;
         localStorage.setItem('draft_turbine', JSON.stringify(currentInput));
     }
-
-    if(activeIdx < AREAS[activeArea].length - 1) { 
-        activeIdx++; 
-        showStep(); 
-    } else { 
-        navigateTo('areaListScreen'); 
-    }
+    if(activeIdx < AREAS[activeArea].length - 1) { activeIdx++; showStep(); } 
+    else { navigateTo('areaListScreen'); }
 }
 
-function goBack() {
-    if(activeIdx > 0) { 
-        activeIdx--; 
-        showStep(); 
-    } else { 
-        navigateTo('areaListScreen'); 
-    }
-}
-
-// 9. PENGIRIMAN DATA KE GOOGLE SHEETS
 async function sendToSheet() {
     document.getElementById('loader').style.display = 'flex';
-    
-    // Gabungkan semua data dari berbagai area menjadi satu objek flat
     const finalData = {}; 
-    Object.values(currentInput).forEach(obj => {
-        Object.assign(finalData, obj);
-    });
-
+    Object.values(currentInput).forEach(obj => Object.assign(finalData, obj));
     try {
-        const response = await fetch(GAS_URL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            body: JSON.stringify(finalData) 
-        });
-
-        showCustomAlert("✓ Sukses! Data Turbine berhasil dikirim ke Cloud.");
-        
-        // Bersihkan draft setelah sukses
-        currentInput = {}; 
-        localStorage.removeItem('draft_turbine'); 
-        navigateTo('homeScreen');
-        renderMenu();
-
-    } catch (e) { 
-        showCustomAlert("Gagal mengirim! Pastikan HP terhubung internet atau VPN Petrokimia."); 
-    } finally {
-        document.getElementById('loader').style.display = 'none';
-    }
-}
-
-// 10. PENGATURAN URL GAS
-function openSettings() { 
-    navigateTo('settingsScreen'); 
-    document.getElementById('gasUrlInput').value = GAS_URL; 
-}
-
-function saveSettings() {
-    const url = document.getElementById('gasUrlInput').value.trim();
-    if(url) { 
-        localStorage.setItem('gas_url_custom', url); 
-        GAS_URL = url; 
-        showCustomAlert("Konfigurasi URL Berhasil disimpan!"); 
-        navigateTo('homeScreen'); 
-    }
+        await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(finalData) });
+        showCustomAlert("✓ Sukses! Data berhasil dikirim.");
+        currentInput = {}; localStorage.removeItem('draft_turbine'); navigateTo('homeScreen');
+    } catch (e) { showCustomAlert("Gagal mengirim!"); }
+    document.getElementById('loader').style.display = 'none';
 }
