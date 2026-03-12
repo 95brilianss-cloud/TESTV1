@@ -74,9 +74,19 @@ function closeAlert() { document.getElementById('customAlert').classList.add('hi
 function fetchLastData() {
     const loader = document.getElementById('loader');
     loader.style.display = 'flex';
+    
+    // Timeout jika server mati
+    const timeout = setTimeout(() => {
+        if(loader.style.display === 'flex') {
+            loader.style.display = 'none';
+            console.warn("Sinkronisasi timeout, menggunakan mode offline");
+        }
+    }, 5000); 
+
     const cb = 'jsonp_' + Date.now();
     const s = document.createElement('script');
     window[cb] = (d) => { 
+        clearTimeout(timeout); // Batalkan timeout jika sukses
         lastData = d; 
         document.getElementById('statusPill').innerText = "Online"; 
         loader.style.display = 'none'; 
@@ -84,10 +94,13 @@ function fetchLastData() {
         delete window[cb]; s.remove(); 
     };
     s.src = `${GAS_URL}?callback=${cb}`;
-    s.onerror = () => { loader.style.display = 'none'; renderMenu(); };
+    s.onerror = () => { 
+        clearTimeout(timeout); 
+        loader.style.display = 'none'; 
+        renderMenu(); 
+    };
     document.body.appendChild(s);
 }
-
 // Render Menu
 function renderMenu() {
     const list = document.getElementById('areaList');
