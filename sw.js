@@ -2,7 +2,7 @@
  * Optimasi: Bypass Cache untuk API Google Script
  */
 
-const APP_VERSION = 'v20'; // Update versi setiap ada perubahan file statis
+const APP_VERSION = 'v21'; // Update versi setiap ada perubahan file statis
 const CACHE_NAME = `turbine-logsheet-${APP_VERSION}`;
 
 const assets = [
