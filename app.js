@@ -76,24 +76,23 @@ async function fetchLastData() {
     loader.style.display = 'flex';
     
     try {
-        // Kita gunakan fetch biasa. 
-        // Pastikan di GAS, doGet sudah mengirimkan MimeType.JSON
+        // Gunakan fetch murni, tanpa callback JSONP
         const response = await fetch(GAS_URL);
-        
-        if (!response.ok) throw new Error('Gagal terhubung ke server');
+        if (!response.ok) throw new Error('Server Error');
         
         const data = await response.json();
         
+        // Update data
         lastData = data;
         document.getElementById('statusPill').innerText = "Online";
         renderMenu();
+        
     } catch (e) {
         console.error("Sinkronisasi gagal:", e);
         document.getElementById('statusPill').innerText = "Offline Mode";
-        // Tetap render menu agar user bisa tetap input meskipun offline
-        renderMenu(); 
+        renderMenu();
     } finally {
-        // Loader PASTI hilang terlepas dari sukses atau gagal
+        // Loader PASTI hilang
         loader.style.display = 'none';
     }
 }
