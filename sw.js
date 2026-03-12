@@ -4,7 +4,7 @@
  */
 
 // 1. IDENTITAS CACHE (Ubah v8 ke v9 jika ada update besar)
-const APP_VERSION = 'v10';
+const APP_VERSION = 'v11';
 const CACHE_NAME = `turbine-logsheet-${APP_VERSION}`;
 
 // 2. DAFTAR ASSETS (Wajib memasukkan app.js agar aplikasi tidak blank saat offline)
