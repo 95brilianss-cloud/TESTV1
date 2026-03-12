@@ -17,103 +17,46 @@ const AREAS = {
     "Chemical Dosing": ["30-TK-6205 LI-6204 (%)", "30-TK-6205 30-P-6205 (A/B)", "30-TK-6205 Disch (kg/cm2)", "30-TK-6205 Stroke (%)", "30-TK-6206 LI-6206 (%)", "30-TK-6206 30-P-6206 (A/B)", "30-TK-6206 Disch (kg/cm2)", "30-TK-6206 Stroke (%)", "30-TK-6207 LI-6208 (%)", "30-TK-6207 30-P-6207 (A/B)", "30-TK-6207 Disch (kg/cm2)", "30-TK-6207 Stroke (%)"]
 };
 
-// State & Konfigurasi
-const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbz_nx_dCtP4kbabfPrk2wqNbBdUXBPf2VqvIDLY0ODyBia21tXDnpvIAreWQKZysQLx/exec";
+const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbwVeFDkIebnWpxHM2uWt68niXMnZ_Qkh0f7zYQ3gJ_F2-oPaodkVIriO3hwsfc2A-jr/exec";
 let GAS_URL = localStorage.getItem('gas_url_custom') || DEFAULT_URL;
 let lastData = {}, currentInput = JSON.parse(localStorage.getItem('draft_turbine')) || {}, activeArea = "", activeIdx = 0;
 
-// Logika Install PWA
-let deferredPrompt;
-const installBtn = document.getElementById('installBtn');
-
-window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    installBtn.style.display = 'block';
-});
-
-installBtn.addEventListener('click', (e) => {
-    installBtn.style.display = 'none';
-    deferredPrompt.prompt();
-    deferredPrompt.userChoice.then((choiceResult) => {
-        deferredPrompt = null;
-    });
-});
-
-window.addEventListener('appinstalled', (evt) => {
-    installBtn.style.display = 'none';
-});
-
-// Inisialisasi
-window.onload = () => { 
-    registerSW();
-    renderMenu(); 
-};
-
+// Registrasi Service Worker
 function registerSW() {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js').then(() => console.log("SW Active"));
     }
 }
 
-// Navigasi & UI
+// Navigasi
 function navigateTo(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
     if(id === 'areaListScreen') fetchLastData();
 }
 
-function showCustomAlert(msg) { 
-    document.getElementById('alertMessage').innerText = msg; 
-    document.getElementById('customAlert').classList.remove('hidden'); 
-}
-
-function closeAlert() { document.getElementById('customAlert').classList.add('hidden'); }
-
-// Data Sync (JSONP)
+// Fetch Data (JSON Murni - Tanpa JSONP)
 async function fetchLastData() {
     const loader = document.getElementById('loader');
     loader.style.display = 'flex';
     
-    // Controller untuk abort fetch jika timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     try {
         const response = await fetch(GAS_URL + "?t=" + new Date().getTime(), {
             signal: controller.signal,
-            // Tambahkan cache-busting
             cache: 'no-store'
         });
         
-        clearTimeout(timeoutId);
+        if (!response.ok) throw new Error("Server error");
         
-        // ❗Periksa apakah response OK
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const text = await response.text();
-        console.log("Raw response:", text); // Debug
-        
-        // Parse JSONP atau JSON murni
-        let data;
-        if (text.includes('(') && text.includes(')')) {
-            // Format JSONP: callback({...})
-            const match = text.match(/\((.*)\)/);
-            data = JSON.parse(match[1]);
-        } else {
-            // Format JSON murni
-            data = JSON.parse(text);
-        }
-        
+        const data = await response.json();
         lastData = data;
         document.getElementById('statusPill').innerText = "Online - " + (data._lastTime || "--:--");
-        
     } catch (e) {
         console.error("Sinkronisasi gagal:", e);
         document.getElementById('statusPill').innerText = "Offline Mode";
-        // ❗Pastikan lastData tetap ada default
         lastData = {}; 
     } finally {
         clearTimeout(timeoutId);
@@ -121,48 +64,46 @@ async function fetchLastData() {
         renderMenu();
     }
 }
-// Render Menu
-function renderMenu() {
-    const list = document.getElementById('areaList');
-    list.innerHTML = `<h3 style="margin-bottom:20px; color: var(--text-main);">⚙️ Pilih Area TURBINE</h3>`;
-    Object.keys(AREAS).forEach(a => {
-        const count = currentInput[a] ? Object.keys(currentInput[a]).length : 0;
-        list.innerHTML += `<div class="area-item" onclick="openArea('${a}')"><div><b>${a}</b><br><small>${count}/${AREAS[a].length} diisi</small></div><div class="badge">${count}/${AREAS[a].length}</div></div>`;
-    });
-    document.getElementById('submitBtn').style.display = Object.keys(currentInput).length > 0 ? 'block' : 'none';
-}
 
-function openArea(a) { activeArea = a; activeIdx = 0; navigateTo('paramScreen'); document.getElementById('currentAreaName').innerText = a; showStep(); }
-
-function showStep() {
-    const fullLabel = AREAS[activeArea][activeIdx];
-    document.getElementById('stepInfo').innerText = `STEP ${activeIdx + 1} / ${AREAS[activeArea].length}`;
-    document.getElementById('labelInput').innerText = fullLabel.split(' (')[0];
-    document.getElementById('unitDisplay').innerText = (fullLabel.match(/\(([^)]+)\)/) || ["","--"])[1];
-    document.getElementById('prevValDisplay').innerText = lastData[fullLabel] || "--";
-    document.getElementById('valInput').value = (currentInput[activeArea] && currentInput[activeArea][fullLabel]) || "";
-    setTimeout(() => document.getElementById('valInput').focus(), 300);
-}
-
+// Simpan Langkah
 function saveStep() {
     const val = document.getElementById('valInput').value.trim();
-    if(val) {
-        if(!currentInput[activeArea]) currentInput[activeArea] = {};
-        currentInput[activeArea][AREAS[activeArea][activeIdx]] = val;
-        localStorage.setItem('draft_turbine', JSON.stringify(currentInput));
+    if(val === "") { showCustomAlert("Harap isi nilai parameter!"); return; }
+    
+    if(!currentInput[activeArea]) currentInput[activeArea] = {};
+    currentInput[activeArea][AREAS[activeArea][activeIdx]] = val;
+    localStorage.setItem('draft_turbine', JSON.stringify(currentInput));
+    
+    if(activeIdx < AREAS[activeArea].length - 1) { 
+        activeIdx++; showStep(); 
+    } else { 
+        renderMenu(); 
+        navigateTo('areaListScreen'); 
     }
-    if(activeIdx < AREAS[activeArea].length - 1) { activeIdx++; showStep(); } 
-    else { navigateTo('areaListScreen'); }
 }
 
+// Kirim Data
 async function sendToSheet() {
     document.getElementById('loader').style.display = 'flex';
     const finalData = {}; 
     Object.values(currentInput).forEach(obj => Object.assign(finalData, obj));
+    
     try {
-        await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(finalData) });
-        showCustomAlert("✓ Sukses! Data berhasil dikirim.");
-        currentInput = {}; localStorage.removeItem('draft_turbine'); navigateTo('homeScreen');
-    } catch (e) { showCustomAlert("Gagal mengirim!"); }
-    document.getElementById('loader').style.display = 'none';
+        const response = await fetch(GAS_URL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            body: JSON.stringify(finalData) 
+        });
+        showCustomAlert("✓ Data berhasil dikirim.");
+        currentInput = {}; 
+        localStorage.removeItem('draft_turbine'); 
+        navigateTo('homeScreen');
+    } catch (e) { 
+        showCustomAlert("Gagal mengirim! Periksa koneksi."); 
+    } finally {
+        document.getElementById('loader').style.display = 'none';
+    }
 }
+
+// Inisialisasi
+window.onload = () => { registerSW(); renderMenu(); };
