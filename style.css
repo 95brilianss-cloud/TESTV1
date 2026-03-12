@@ -1,44 +1,44 @@
-/* --- Tambahan untuk Tombol Install & Loader agar responsif --- */
-
-/* Memastikan spinner memiliki animasi yang mulus */
-.spinner {
-    width: 45px; 
-    height: 45px; 
-    border: 4px solid var(--primary); 
-    border-top-color: transparent; 
-    border-radius: 50%; 
-    animation: spin 0.8s linear infinite;
+/* --- Root Variables --- */
+:root {
+    --bg-color: #f8fafc;
+    --card-bg: #ffffff;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
 }
 
-/* Memastikan tombol install tampil menonjol namun tetap bersih */
-#installBtn {
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    padding: 14px;
-    transition: all 0.2s ease;
-}
+/* --- Base Layout --- */
+body { font-family: -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 0; }
+.app-container { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 20px; box-sizing: border-box; }
+.screen { display: none; }
+.screen.active { display: block; }
 
-#installBtn:active {
-    background: #eff6ff;
-    transform: translateY(1px);
-}
+/* --- UI Components --- */
+.header-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 25px; }
+.area-item { background: var(--card-bg); border: 1px solid var(--border); padding: 18px; border-radius: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s; }
+.area-item:active { transform: scale(0.98); background: #f1f5f9; }
+.input-container { background: var(--card-bg); padding: 24px; border-radius: 20px; border: 1px solid var(--border); margin-top: 10px; }
+input[type="text"] { width: 100%; padding: 16px; font-size: 18px; border: 2px solid var(--border); border-radius: 12px; box-sizing: border-box; }
 
-/* Memastikan alert memiliki tombol aksi yang jelas */
-.alert-content button {
-    margin-top: 20px;
-    width: 100%;
-    padding: 12px;
-    background: var(--primary);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    font-weight: 700;
-    cursor: pointer;
-}
+/* --- Buttons --- */
+.btn { width: 100%; padding: 16px; border-radius: 14px; border: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
 
-/* Optimasi layar kecil untuk input */
-@media (max-height: 600px) {
-    .input-container { padding: 15px; }
-    h2#labelInput { font-size: 18px !important; margin-bottom: 10px !important; }
-}
+/* --- Loader & Spinner --- */
+.loader-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(248, 250, 252, 0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; }
+.spinner { width: 45px; height: 45px; border: 4px solid var(--primary); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- Alerts --- */
+.custom-alert { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.6); display: flex; justify-content: center; align-items: center; z-index: 10000; }
+.custom-alert.hidden { display: none; }
+.alert-content { background: white; padding: 32px; border-radius: 28px; width: 85%; text-align: center; }
+.alert-content button { margin-top: 20px; width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
+
+/* --- Responsive & Install --- */
+#installBtn { font-size: 14px; letter-spacing: 0.5px; padding: 14px; transition: all 0.2s ease; margin-top: 20px; border: 1px solid var(--primary); color: var(--primary); }
+#installBtn:active { background: #eff6ff; transform: translateY(1px); }
+@media (max-height: 600px) { .input-container { padding: 15px; } h2#labelInput { font-size: 18px !important; margin-bottom: 10px !important; } }
