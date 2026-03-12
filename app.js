@@ -71,35 +71,31 @@ function showCustomAlert(msg) {
 function closeAlert() { document.getElementById('customAlert').classList.add('hidden'); }
 
 // Data Sync (JSONP)
-function fetchLastData() {
+async function fetchLastData() {
     const loader = document.getElementById('loader');
     loader.style.display = 'flex';
     
-    // Timeout jika server mati
-    const timeout = setTimeout(() => {
-        if(loader.style.display === 'flex') {
-            loader.style.display = 'none';
-            console.warn("Sinkronisasi timeout, menggunakan mode offline");
-        }
-    }, 5000); 
-
-    const cb = 'jsonp_' + Date.now();
-    const s = document.createElement('script');
-    window[cb] = (d) => { 
-        clearTimeout(timeout); // Batalkan timeout jika sukses
-        lastData = d; 
-        document.getElementById('statusPill').innerText = "Online"; 
-        loader.style.display = 'none'; 
+    try {
+        // Kita gunakan fetch biasa. 
+        // Pastikan di GAS, doGet sudah mengirimkan MimeType.JSON
+        const response = await fetch(GAS_URL);
+        
+        if (!response.ok) throw new Error('Gagal terhubung ke server');
+        
+        const data = await response.json();
+        
+        lastData = data;
+        document.getElementById('statusPill').innerText = "Online";
+        renderMenu();
+    } catch (e) {
+        console.error("Sinkronisasi gagal:", e);
+        document.getElementById('statusPill').innerText = "Offline Mode";
+        // Tetap render menu agar user bisa tetap input meskipun offline
         renderMenu(); 
-        delete window[cb]; s.remove(); 
-    };
-    s.src = `${GAS_URL}?callback=${cb}`;
-    s.onerror = () => { 
-        clearTimeout(timeout); 
-        loader.style.display = 'none'; 
-        renderMenu(); 
-    };
-    document.body.appendChild(s);
+    } finally {
+        // Loader PASTI hilang terlepas dari sukses atau gagal
+        loader.style.display = 'none';
+    }
 }
 // Render Menu
 function renderMenu() {
