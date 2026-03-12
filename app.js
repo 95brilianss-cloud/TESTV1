@@ -17,7 +17,7 @@ const AREAS = {
     "Chemical Dosing": ["30-TK-6205 LI-6204 (%)", "30-TK-6205 30-P-6205 (A/B)", "30-TK-6205 Disch (kg/cm2)", "30-TK-6205 Stroke (%)", "30-TK-6206 LI-6206 (%)", "30-TK-6206 30-P-6206 (A/B)", "30-TK-6206 Disch (kg/cm2)", "30-TK-6206 Stroke (%)", "30-TK-6207 LI-6208 (%)", "30-TK-6207 30-P-6207 (A/B)", "30-TK-6207 Disch (kg/cm2)", "30-TK-6207 Stroke (%)"]
 };
 
-const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbzEi2GR8FBLVw2Va4Oitvi1fhbNGUXTZC6UJ14RLgWfrX9_BkPaqU_vdt7JjcUlct_3/exec";
+const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbzfWhyDf8vVlEkHhLu8qxUWcyP-0iNIjAMr_EuoBAkz_BMafJSF8fST3xdlfX9eiXs/exec";
 let GAS_URL = localStorage.getItem('gas_url_custom') || DEFAULT_URL;
 let lastData = {}, currentInput = JSON.parse(localStorage.getItem('draft_turbine')) || {}, activeArea = "", activeIdx = 0;
 
