@@ -76,24 +76,24 @@ async function fetchLastData() {
     loader.style.display = 'flex';
     
     try {
-        // Gunakan fetch murni, tanpa callback JSONP
         const response = await fetch(GAS_URL);
         if (!response.ok) throw new Error('Server Error');
-        
         const data = await response.json();
         
-        // Update data
+        // Simpan data
         lastData = data;
         document.getElementById('statusPill').innerText = "Online";
-        renderMenu();
+        
+        // DEBUG: Cek apa yang diterima
+        console.log("Data diterima:", data);
         
     } catch (e) {
         console.error("Sinkronisasi gagal:", e);
         document.getElementById('statusPill').innerText = "Offline Mode";
-        renderMenu();
     } finally {
-        // Loader PASTI hilang
+        // PAKSA HILANGKAN LOADER APA PUN HASILNYA
         loader.style.display = 'none';
+        renderMenu(); // Pastikan menu dirender setelah fetch
     }
 }
 // Render Menu
