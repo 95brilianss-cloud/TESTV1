@@ -2,7 +2,7 @@
  * Departemen Operasi Pabrik III B - PT Petrokimia Gresik
  */
 
-// 1. DAFTAR PARAMETER UNIT
+// 1. DATA & KONFIGURASI
 const AREAS = {
     "Steam Inlet Turbine": ["MPS Inlet 30-TP-6101 PI-6114 (kg/cm2)", "MPS Inlet 30-TP-6101 TI-6153 (°C)", "MPS Inlet 30-TP-6101 PI-6116 (kg/cm2)", "LPS Extrac 30-TP-6101 PI-6123 (kg/cm2)", "Gland Steam TI-6156 (°C)", "MPS Inlet 30-TP-6101 PI-6108 (Kg/cm2)", "Exhaust Steam PI-6111 (kg/cm2)", "Gland Steam PI-6118 (Kg/cm2)"],
     "Low Pressure Steam": ["LPS from U-6101 PI-6104 (kg/cm2)", "LPS from U-6101 TI-6102 (°C)", "LPS Header PI-6106 (Kg/cm2)", "LPS Header TI-6107 (°C)"],
@@ -17,25 +17,29 @@ const AREAS = {
     "Chemical Dosing": ["30-TK-6205 LI-6204 (%)", "30-TK-6205 30-P-6205 (A/B)", "30-TK-6205 Disch (kg/cm2)", "30-TK-6205 Stroke (%)", "30-TK-6206 LI-6206 (%)", "30-TK-6206 30-P-6206 (A/B)", "30-TK-6206 Disch (kg/cm2)", "30-TK-6206 Stroke (%)", "30-TK-6207 LI-6208 (%)", "30-TK-6207 30-P-6207 (A/B)", "30-TK-6207 Disch (kg/cm2)", "30-TK-6207 Stroke (%)"]
 };
 
-const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbwVeFDkIebnWpxHM2uWt68niXMnZ_Qkh0f7zYQ3gJ_F2-oPaodkVIriO3hwsfc2A-jr/exec";
+const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbzEi2GR8FBLVw2Va4Oitvi1fhbNGUXTZC6UJ14RLgWfrX9_BkPaqU_vdt7JjcUlct_3/exec";
 let GAS_URL = localStorage.getItem('gas_url_custom') || DEFAULT_URL;
 let lastData = {}, currentInput = JSON.parse(localStorage.getItem('draft_turbine')) || {}, activeArea = "", activeIdx = 0;
 
-// Registrasi Service Worker
-function registerSW() {
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js').then(() => console.log("SW Active"));
-    }
+// 2. FUNGSI UTAMA (RENDER & NAVIGASI)
+function renderMenu() {
+    const list = document.getElementById('areaList');
+    if (!list) return;
+    list.innerHTML = `<h3 style="margin-bottom:20px; color: var(--text-main);">⚙️ Pilih Area TURBINE</h3>`;
+    Object.keys(AREAS).forEach(a => {
+        const count = currentInput[a] ? Object.keys(currentInput[a]).length : 0;
+        list.innerHTML += `<div class="area-item" onclick="openArea('${a}')"><div><b>${a}</b><br><small>${count}/${AREAS[a].length} diisi</small></div><div class="badge">${count}/${AREAS[a].length}</div></div>`;
+    });
+    document.getElementById('submitBtn').style.display = Object.keys(currentInput).length > 0 ? 'block' : 'none';
 }
 
-// Navigasi
 function navigateTo(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
     if(id === 'areaListScreen') fetchLastData();
 }
 
-// Fetch Data (JSON Murni - Tanpa JSONP)
+// 3. SINKRONISASI DATA (Perbaikan: Pakai .json() murni, hindari JSONP)
 async function fetchLastData() {
     const loader = document.getElementById('loader');
     loader.style.display = 'flex';
@@ -49,9 +53,7 @@ async function fetchLastData() {
             cache: 'no-store'
         });
         
-        if (!response.ok) throw new Error("Server error");
-        
-        const data = await response.json();
+        const data = await response.json(); // Pastikan GAS kirim JSON murni
         lastData = data;
         document.getElementById('statusPill').innerText = "Online - " + (data._lastTime || "--:--");
     } catch (e) {
@@ -65,45 +67,33 @@ async function fetchLastData() {
     }
 }
 
-// Simpan Langkah
+// 4. LOGIKA INPUT & KIRIM
 function saveStep() {
     const val = document.getElementById('valInput').value.trim();
-    if(val === "") { showCustomAlert("Harap isi nilai parameter!"); return; }
+    if(!val) { alert("Data tidak boleh kosong!"); return; }
     
     if(!currentInput[activeArea]) currentInput[activeArea] = {};
     currentInput[activeArea][AREAS[activeArea][activeIdx]] = val;
     localStorage.setItem('draft_turbine', JSON.stringify(currentInput));
     
-    if(activeIdx < AREAS[activeArea].length - 1) { 
-        activeIdx++; showStep(); 
-    } else { 
-        renderMenu(); 
-        navigateTo('areaListScreen'); 
-    }
+    if(activeIdx < AREAS[activeArea].length - 1) { activeIdx++; showStep(); } 
+    else { navigateTo('areaListScreen'); }
 }
 
-// Kirim Data
 async function sendToSheet() {
     document.getElementById('loader').style.display = 'flex';
     const finalData = {}; 
     Object.values(currentInput).forEach(obj => Object.assign(finalData, obj));
-    
     try {
-        const response = await fetch(GAS_URL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            body: JSON.stringify(finalData) 
-        });
-        showCustomAlert("✓ Data berhasil dikirim.");
-        currentInput = {}; 
-        localStorage.removeItem('draft_turbine'); 
-        navigateTo('homeScreen');
-    } catch (e) { 
-        showCustomAlert("Gagal mengirim! Periksa koneksi."); 
-    } finally {
-        document.getElementById('loader').style.display = 'none';
-    }
+        await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(finalData) });
+        alert("✓ Sukses! Data berhasil dikirim.");
+        currentInput = {}; localStorage.removeItem('draft_turbine'); navigateTo('homeScreen');
+    } catch (e) { alert("Gagal mengirim!"); }
+    document.getElementById('loader').style.display = 'none';
 }
 
-// Inisialisasi
-window.onload = () => { registerSW(); renderMenu(); };
+// 5. INISIALISASI (Dijalankan paling akhir)
+window.onload = () => { 
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+    renderMenu(); 
+};
