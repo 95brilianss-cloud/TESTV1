@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * TURBINE LOGSHEET PRO - FRONTEND CORE
- * Version: 2.0.0 Final (Secure Auth Edition)
+ * Version: 2.0.2 Final (Simple Auth Edition)
  * =============================================================================
  */
 
@@ -9,17 +9,13 @@
 // CONFIGURATION & CONSTANTS
 // ============================================
 const APP_VERSION = '2.0.3';
-const APP_VERSION_DISPLAY = '2.0.3 Secure';
+const APP_VERSION_DISPLAY = '2.0.3 Simple';
 const GAS_URL = "https://script.google.com/macros/s/AKfycbymqZcHIGQDN4AM8vvj1qwf76yvBOzF49He9eju_i-ybEl3cWBoZQhGDH1iToR2kZ0P/exec";
 
+// Simplified Auth - Hanya simpan user di localStorage
 const AUTH_CONFIG = {
-    SESSION_KEY: 'turbine_session_v2',
-    USER_KEY: 'turbine_user_v2',
-    SESSION_DURATION: 8 * 60 * 60 * 1000,
-    MAX_LOGIN_ATTEMPTS: 5,
-    LOCKOUT_KEY: 'login_lockout_until',
-    FAILED_ATTEMPTS_KEY: 'failed_login_count',
-    PASSWORD_MIN_LENGTH: 4
+    SESSION_KEY: 'turbine_user_simple',
+    SESSION_DURATION: 24 * 60 * 60 * 1000 // 24 jam
 };
 
 const DRAFT_KEYS = {
@@ -214,50 +210,25 @@ let uploadProgressInterval = null;
 let currentUploadController = null;
 
 // ============================================
-// VERSION MANAGER - AUTO UPDATE DISPLAY
+// VERSION MANAGER
 // ============================================
-
-/**
- * Update semua elemen versi di UI berdasarkan APP_VERSION
- */
 function updateVersionDisplay() {
-    // Update document title
     document.title = `Turbine Logsheet Pro v${APP_VERSION}`;
-    
-    // Update meta tag
     const metaVersion = document.querySelector('meta[name="app-version"]');
-    if (metaVersion) {
-        metaVersion.setAttribute('content', APP_VERSION);
-    }
+    if (metaVersion) metaVersion.setAttribute('content', APP_VERSION);
     
-    // Update version di login footer
     const versionTag = document.getElementById('versionDisplay');
-    if (versionTag) {
-        versionTag.textContent = `v${APP_VERSION_DISPLAY}`;
-    }
+    if (versionTag) versionTag.textContent = `v${APP_VERSION_DISPLAY}`;
     
-    // Update version di loader
     const loaderVersion = document.getElementById('loaderVersion');
-    if (loaderVersion) {
-        loaderVersion.textContent = `v${APP_VERSION}`;
-    }
+    if (loaderVersion) loaderVersion.textContent = `v${APP_VERSION}`;
     
-    // Update version di home screen
     const homeVersion = document.getElementById('homeVersionDisplay');
-    if (homeVersion) {
-        homeVersion.textContent = APP_VERSION;
-    }
+    if (homeVersion) homeVersion.textContent = APP_VERSION;
     
-    // Update cache-busting untuk stylesheet
     const mainStylesheet = document.getElementById('mainStylesheet');
     if (mainStylesheet && !mainStylesheet.href.includes('?v=')) {
         mainStylesheet.href = `style.css?v=${APP_VERSION}`;
-    }
-    
-    // Update cache-busting untuk manifest
-    const manifestLink = document.getElementById('manifestLink');
-    if (manifestLink && !manifestLink.href.includes('?v=')) {
-        manifestLink.href = `manifest.json?v=${APP_VERSION}`;
     }
     
     console.log(`[Version Manager] UI Updated to v${APP_VERSION}`);
@@ -291,107 +262,159 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================
-// ENHANCED AUTHENTICATION SYSTEM
+// SIMPLIFIED AUTHENTICATION SYSTEM
 // ============================================
 
 function initAuth() {
-    if (isClientLockedOut()) {
-        showClientLockoutScreen();
+    // Cek apakah sudah login dari localStorage
+    const savedUser = localStorage.getItem(AUTH_CONFIG.SESSION_KEY);
+    
+    if (savedUser) {
+        try {
+            const userData = JSON.parse(savedUser);
+            // Cek expired (24 jam)
+            if (userData.expiresAt && Date.now() < userData.expiresAt) {
+                currentUser = userData.user;
+                isAuthenticated = true;
+                updateUIForAuthenticatedUser();
+                navigateTo('homeScreen');
+                return;
+            }
+        } catch(e) {
+            console.error('Session error', e);
+        }
+        // Kalau expired atau error, clear
+        localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
+    }
+    
+    showLoginScreen();
+}
+
+async function loginOperator() {
+    const nameInput = document.getElementById('operatorName');
+    const passInput = document.getElementById('operatorPassword');
+    const loginBtn = document.querySelector('#loginScreen .btn-primary');
+    
+    if (!nameInput || !passInput) return;
+    
+    const username = nameInput.value.trim();
+    const password = passInput.value;
+    
+    // Validasi basic
+    if (!username || !password) {
+        showLoginError('Username dan password wajib diisi!');
         return;
     }
     
-    const session = getSession();
+    // Loading state
+    const originalBtnText = loginBtn ? loginBtn.innerHTML : '';
+    if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.innerHTML = '<span class="spinner"></span> Memverifikasi...';
+    }
     
-    if (session && isSessionValid(session)) {
-        currentUser = session.user;
-        isAuthenticated = true;
-        updateUIForAuthenticatedUser();
+    try {
+        // Kirim ke backend (simplified)
+        const response = await fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'LOGIN',
+                username: username,
+                password: password
+            })
+        });
         
-        const loginScreen = document.getElementById('loginScreen');
-        if (loginScreen && loginScreen.classList.contains('active')) {
-            navigateTo('homeScreen');
-        }
-    } else {
-        clearSession();
-        showLoginScreen();
-    }
-}
-
-function getSession() {
-    try {
-        const sessionData = localStorage.getItem(AUTH_CONFIG.SESSION_KEY);
-        return sessionData ? JSON.parse(sessionData) : null;
-    } catch (e) {
-        console.error('Error reading session:', e);
-        return null;
-    }
-}
-
-function saveSession(user, rememberMe = false) {
-    const duration = rememberMe ? (30 * 24 * 60 * 60 * 1000) : AUTH_CONFIG.SESSION_DURATION;
-    const session = {
-        user: user,
-        loginTime: Date.now(),
-        expiresAt: Date.now() + duration,
-        rememberMe: rememberMe,
-        sessionToken: user.sessionToken || null
-    };
-    
-    try {
-        localStorage.setItem(AUTH_CONFIG.SESSION_KEY, JSON.stringify(session));
-        localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(user));
-    } catch (e) {
-        console.error('Error saving session:', e);
-    }
-}
-
-function isSessionValid(session) {
-    if (!session || !session.expiresAt) return false;
-    if (Date.now() > session.expiresAt) return false;
-    return true;
-}
-
-function clearSession() {
-    localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
-    localStorage.removeItem(AUTH_CONFIG.USER_KEY);
-    currentUser = null;
-    isAuthenticated = false;
-}
-
-function isClientLockedOut() {
-    const lockoutUntil = localStorage.getItem(AUTH_CONFIG.LOCKOUT_KEY);
-    if (lockoutUntil) {
-        const now = Date.now();
-        if (now < parseInt(lockoutUntil)) {
-            return true;
+        const result = await response.json();
+        
+        if (result.success) {
+            // Simpan session sederhana (24 jam)
+            const sessionData = {
+                user: result.user,
+                expiresAt: Date.now() + AUTH_CONFIG.SESSION_DURATION
+            };
+            localStorage.setItem(AUTH_CONFIG.SESSION_KEY, JSON.stringify(sessionData));
+            
+            currentUser = result.user;
+            isAuthenticated = true;
+            
+            showCustomAlert(`Selamat datang, ${username}!`, 'success');
+            
+            setTimeout(() => {
+                updateUIForAuthenticatedUser();
+                navigateTo('homeScreen');
+                loadUserStats();
+            }, 800);
+            
         } else {
-            localStorage.removeItem(AUTH_CONFIG.LOCKOUT_KEY);
-            localStorage.removeItem(AUTH_CONFIG.FAILED_ATTEMPTS_KEY);
+            showLoginError(result.message || 'Username atau password salah');
+        }
+        
+    } catch (error) {
+        console.error('Login error:', error);
+        showLoginError('Gagal terhubung ke server. Periksa koneksi internet.');
+    } finally {
+        if (loginBtn) {
+            loginBtn.disabled = false;
+            loginBtn.innerHTML = originalBtnText;
         }
     }
-    return false;
 }
 
-function showClientLockoutScreen() {
-    const lockoutUntil = parseInt(localStorage.getItem(AUTH_CONFIG.LOCKOUT_KEY));
-    const remainingMinutes = Math.ceil((lockoutUntil - Date.now()) / 60000);
+function logoutOperator() {
+    if (confirm('Apakah Anda yakin ingin keluar?')) {
+        localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
+        currentUser = null;
+        isAuthenticated = false;
+        
+        // Clear input
+        const nameInput = document.getElementById('operatorName');
+        const passInput = document.getElementById('operatorPassword');
+        if (nameInput) nameInput.value = '';
+        if (passInput) passInput.value = '';
+        
+        showLoginScreen();
+        showCustomAlert('Anda telah keluar dari sistem.', 'success');
+    }
+}
+
+function showLoginScreen() {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const loginScreen = document.getElementById('loginScreen');
+    if (loginScreen) {
+        loginScreen.classList.add('active');
+        const inputs = loginScreen.querySelectorAll('input, button');
+        inputs.forEach(el => el.disabled = false);
+    }
+}
+
+function updateUIForAuthenticatedUser() {
+    if (!currentUser) return;
     
-    showLoginError(`Akun terkunci. Tunggu ${remainingMinutes} menit.`, 'locked');
+    const userElements = [
+        'displayUserName', 'tpmHeaderUser', 'tpmInputUser', 
+        'areaListUser', 'paramUser', 'balancingUser'
+    ];
     
-    const inputs = document.querySelectorAll('#loginScreen input, #loginScreen button');
-    inputs.forEach(el => {
-        if (!el.classList.contains('alert-btn')) el.disabled = true;
+    userElements.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = currentUser.name;
     });
     
-    setTimeout(() => {
-        inputs.forEach(el => el.disabled = false);
-        hideLoginError();
-    }, remainingMinutes * 60000);
+    // Show admin-only elements if admin
+    if (currentUser.role === 'admin') {
+        document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+    }
 }
 
-function setClientLockout(minutes) {
-    const until = Date.now() + (minutes * 60000);
-    localStorage.setItem(AUTH_CONFIG.LOCKOUT_KEY, until.toString());
+function requireAuth() {
+    if (!isAuthenticated) {
+        showLoginScreen();
+        showCustomAlert('Silakan login terlebih dahulu.', 'warning');
+        return false;
+    }
+    return true;
 }
 
 function setupLoginListeners() {
@@ -433,291 +456,20 @@ function hideLoginError() {
     if (errorMsg) {
         errorMsg.style.display = 'none';
         errorMsg.textContent = '';
-        errorMsg.className = 'login-error';
     }
 }
 
-function showLoginError(message, type = 'error') {
+function showLoginError(message) {
     const errorMsg = document.getElementById('loginError');
-    if (!errorMsg) return;
-    
-    errorMsg.textContent = message;
-    errorMsg.style.display = 'block';
-    
-    if (type === 'warning') {
-        errorMsg.classList.add('warning');
-    } else if (type === 'locked') {
-        errorMsg.classList.add('locked');
-    }
-}
-
-async function loginOperator() {
-    if (isClientLockedOut()) {
-        showClientLockoutScreen();
-        return;
-    }
-    
-    const nameInput = document.getElementById('operatorName');
-    const passInput = document.getElementById('operatorPassword');
-    const loginBtn = document.querySelector('#loginScreen .btn-primary');
-    
-    if (!nameInput || !passInput) {
-        console.error('Login inputs not found');
-        return;
-    }
-    
-    const username = nameInput.value.trim();
-    const password = passInput.value;
-    
-    if (!username || !password) {
-        showLoginError('Username dan password wajib diisi!');
-        if (!username) nameInput.focus();
-        else passInput.focus();
-        return;
-    }
-    
-    if (username.length < 3) {
-        showLoginError('Username minimal 3 karakter!');
-        nameInput.focus();
-        return;
-    }
-    
-    if (password.length < AUTH_CONFIG.PASSWORD_MIN_LENGTH) {
-        showLoginError(`Password minimal ${AUTH_CONFIG.PASSWORD_MIN_LENGTH} karakter!`);
-        passInput.focus();
-        return;
-    }
-    
-    const originalBtnText = loginBtn ? loginBtn.innerHTML : '';
-    if (loginBtn) {
-        loginBtn.disabled = true;
-        loginBtn.innerHTML = '<span class="spinner"></span> Memverifikasi...';
-    }
-    
-    try {
-        const clientIP = await getClientIP().catch(() => 'unknown');
-        
-        const response = await fetch(GAS_URL, {
-            method: 'POST',
-            mode: 'cors',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                type: 'LOGIN',
-                username: username,
-                password: password,
-                clientIP: clientIP,
-                timestamp: new Date().toISOString(),
-                clientVersion: APP_VERSION
-            })
-        });
-        
-        if (response.status === 429) {
-            throw { error: 'too_many_requests', message: 'Terlalu banyak request. Silakan tunggu.' };
-        }
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            localStorage.removeItem(AUTH_CONFIG.FAILED_ATTEMPTS_KEY);
-            saveSession(result.user, false);
-            currentUser = result.user;
-            isAuthenticated = true;
-            
-            showCustomAlert(`Selamat datang, ${username}!`, 'success');
-            
-            setTimeout(() => {
-                updateUIForAuthenticatedUser();
-                navigateTo('homeScreen');
-                loadUserStats();
-            }, 800);
-            
-        } else {
-            handleBackendLoginError(result, username);
-        }
-        
-    } catch (error) {
-        console.error('Login error:', error);
-        
-        if (error.error === 'too_many_requests') {
-            showLoginError(error.message, 'warning');
-        } else {
-            showLoginError('Gagal terhubung ke server. Periksa koneksi internet.', 'warning');
-        }
-        
-    } finally {
-        if (loginBtn) {
-            loginBtn.disabled = false;
-            loginBtn.innerHTML = originalBtnText;
-        }
-    }
-}
-
-function handleBackendLoginError(result, username) {
-    const failedAttempts = parseInt(localStorage.getItem(AUTH_CONFIG.FAILED_ATTEMPTS_KEY) || '0') + 1;
-    localStorage.setItem(AUTH_CONFIG.FAILED_ATTEMPTS_KEY, failedAttempts.toString());
-    
-    if (result.error === 'account_locked' || result.lockoutMinutes) {
-        setClientLockout(result.lockoutMinutes || 30);
-        showClientLockoutScreen();
-        
-    } else if (result.error === 'too_many_requests') {
-        showLoginError(result.message || 'Terlalu banyak percobaan. Silakan tunggu.', 'warning');
-        
-    } else if (result.error === 'account_inactive') {
-        showLoginError('Akun tidak aktif. Hubungi administrator.', 'locked');
-        
-    } else {
-        let msg = result.message || 'Username atau password salah';
-        if (result.warning) {
-            msg += ` (${result.warning})`;
-        }
-        showLoginError(msg);
-        
-        if (failedAttempts >= AUTH_CONFIG.MAX_LOGIN_ATTEMPTS) {
-            setClientLockout(30);
-            showClientLockoutScreen();
-        }
-    }
-}
-
-function logoutOperator() {
-    if (confirm('Apakah Anda yakin ingin keluar?')) {
-        if (Object.keys(currentInput).length > 0) {
-            localStorage.setItem(DRAFT_KEYS.LOGSHEET_BACKUP, JSON.stringify(currentInput));
-        }
-        
-        clearSession();
-        
-        const nameInput = document.getElementById('operatorName');
-        const passInput = document.getElementById('operatorPassword');
-        if (nameInput) nameInput.value = '';
-        if (passInput) passInput.value = '';
-        
-        showLoginScreen();
-        showCustomAlert('Anda telah keluar dari sistem.', 'success');
-    }
-}
-
-function showLoginScreen() {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    
-    const loginScreen = document.getElementById('loginScreen');
-    if (loginScreen) {
-        loginScreen.classList.add('active');
-        const inputs = loginScreen.querySelectorAll('input, button');
-        inputs.forEach(el => el.disabled = false);
-    }
-    
-    const savedUser = localStorage.getItem(AUTH_CONFIG.USER_KEY);
-    if (savedUser) {
-        try {
-            const user = JSON.parse(savedUser);
-            const nameInput = document.getElementById('operatorName');
-            if (nameInput && user.name) {
-                nameInput.value = user.name;
-            }
-        } catch (e) {
-            console.error('Error parsing saved user:', e);
-        }
-    }
-}
-
-function updateUIForAuthenticatedUser() {
-    if (!currentUser) return;
-    
-    const userElements = [
-        'displayUserName',
-        'tpmHeaderUser',
-        'tpmInputUser',
-        'areaListUser',
-        'paramUser',
-        'balancingUser'
-    ];
-    
-    userElements.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = currentUser.name;
-    });
-    
-    if (currentUser.role === 'admin') {
-        document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
-    }
-}
-
-function requireAuth() {
-    if (!isAuthenticated || !isSessionValid(getSession())) {
-        clearSession();
-        showLoginScreen();
-        showCustomAlert('Sesi Anda telah berakhir. Silakan login kembali.', 'error');
-        return false;
-    }
-    return true;
-}
-
-async function getClientIP() {
-    try {
-        const response = await fetch('https://api.ipify.org?format=json');
-        const data = await response.json();
-        return data.ip;
-    } catch (e) {
-        return 'unknown';
-    }
-}
-
-// ============================================
-// BATCH REGISTRATION (Admin Only)
-// ============================================
-
-async function batchRegisterUsers(usersArray, adminPassword) {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showCustomAlert('Hanya admin yang dapat menggunakan fitur ini!', 'error');
-        return;
-    }
-    
-    try {
-        const response = await fetch(GAS_URL, {
-            method: 'POST',
-            mode: 'cors',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                type: 'BATCH_REGISTER',
-                adminUsername: currentUser.name,
-                adminPassword: adminPassword,
-                users: usersArray
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            showCustomAlert(
-                `Registrasi berhasil! ${result.successful} dari ${result.processed} user didaftarkan.`, 
-                'success'
-            );
-        } else {
-            showCustomAlert(result.message || 'Gagal melakukan registrasi', 'error');
-        }
-        
-        return result;
-        
-    } catch (error) {
-        console.error('Batch registration error:', error);
-        showCustomAlert('Gagal terhubung ke server', 'error');
-        return {
-            success: false,
-            error: 'network_error'
-        };
+    if (errorMsg) {
+        errorMsg.textContent = message;
+        errorMsg.style.display = 'block';
     }
 }
 
 // ============================================
 // UPLOAD PROGRESS MANAGER
 // ============================================
-
 function showUploadProgress(title = 'Mengupload Data...') {
     const overlay = document.getElementById('uploadProgressOverlay');
     const percentage = document.getElementById('progressPercentage');
@@ -855,17 +607,12 @@ function cancelUpload() {
 // ============================================
 // UI & NAVIGATION FUNCTIONS
 // ============================================
-
 window.addEventListener('DOMContentLoaded', () => {
-    // Update versi pertama kali
     updateVersionDisplay();
-    
     totalParams = Object.values(AREAS).reduce((acc, arr) => acc + arr.length, 0);
-    
     initAuth();
     setupLoginListeners();
     setupTPMListeners();
-    
     simulateLoading();
 });
 
@@ -941,28 +688,20 @@ function showCustomAlert(msg, type = 'success') {
                 <path d="M14.1 27.2l7.1 7.2 16.7-16.8"></path>
             </svg>
         `;
+    } else if (type === 'error') {
+        alertIconWrapper.innerHTML = `
+            <div class="alert-icon-bg" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);"></div>
+            <svg class="alert-icon-svg" viewBox="0 0 52 52" style="stroke: #ef4444;">
+                <circle cx="26" cy="26" r="25"></circle>
+                <path d="M16 16 L36 36 M36 16 L16 36"></path>
+            </svg>
+        `;
     } else if (type === 'warning') {
         alertIconWrapper.innerHTML = `
             <div class="alert-icon-bg" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"></div>
             <svg class="alert-icon-svg" viewBox="0 0 52 52" style="stroke: #f59e0b;">
                 <circle cx="26" cy="26" r="25"></circle>
                 <path d="M26 10 L26 30 M26 34 L26 38"></path>
-            </svg>
-        `;
-    } else if (type === 'info') {
-        alertIconWrapper.innerHTML = `
-            <div class="alert-icon-bg" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);"></div>
-            <svg class="alert-icon-svg" viewBox="0 0 52 52" style="stroke: #3b82f6;">
-                <circle cx="26" cy="26" r="25"></circle>
-                <path d="M26 10 L26 30 M26 34 L26 36"/>
-            </svg>
-        `;
-    } else {
-        alertIconWrapper.innerHTML = `
-            <div class="alert-icon-bg" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);"></div>
-            <svg class="alert-icon-svg" viewBox="0 0 52 52" style="stroke: #ef4444;">
-                <circle cx="26" cy="26" r="25"></circle>
-                <path d="M16 16 L36 36 M36 16 L16 36"></path>
             </svg>
         `;
     }
@@ -1034,7 +773,6 @@ function loadUserStats() {
 // ============================================
 // LOGSHEET FUNCTIONS
 // ============================================
-
 function fetchLastData() {
     updateStatusIndicator(false);
     const timeout = setTimeout(() => renderMenu(), 8000);
@@ -1566,7 +1304,6 @@ async function sendToSheet() {
 // ============================================
 // TPM FUNCTIONS
 // ============================================
-
 function updateTPMUserInfo() {
     if (!currentUser) return;
     const tpmHeaderUser = document.getElementById('tpmHeaderUser');
@@ -1747,7 +1484,6 @@ async function submitTPMData() {
 // ============================================
 // BALANCING FUNCTIONS
 // ============================================
-
 function saveBalancingDraft() {
     try {
         const draftData = {};
@@ -2398,7 +2134,6 @@ async function submitBalancingData() {
 // ============================================
 // PWA INSTALL HANDLER
 // ============================================
-
 let deferredPrompt = null;
 let installBannerShown = false;
 
@@ -2556,7 +2291,9 @@ function toggleSS2000Detail() {
     }
 }
 
-// Expose functions yang dibutuhkan global
+// ============================================
+// GLOBAL EXPORTS
+// ============================================
 window.updateVersionDisplay = updateVersionDisplay;
 window.navigateTo = navigateTo;
 window.loginOperator = loginOperator;
@@ -2583,18 +2320,6 @@ window.applyUpdate = applyUpdate;
 window.cancelUpload = cancelUpload;
 window.installPWA = installPWA;
 window.hideCustomInstallBanner = hideCustomInstallBanner;
-window.openBatchRegistration = () => {
-    const modal = document.getElementById('batchRegisterModal');
-    if (modal) modal.classList.remove('hidden');
-};
-window.closeBatchModal = () => {
-    const modal = document.getElementById('batchRegisterModal');
-    if (modal) modal.classList.add('hidden');
-};
-window.executeBatchRegister = () => {
-    // Implementasi batch register
-    showCustomAlert('Fitur batch register - Hubungi developer untuk implementasi lengkap', 'info');
-};
 window.showForgotPassword = () => {
     showCustomAlert('Silakan hubungi administrator untuk reset password', 'info');
 };
