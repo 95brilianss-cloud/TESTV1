@@ -8,9 +8,9 @@
 // ============================================
 // CONFIGURATION & CONSTANTS
 // ============================================
-const APP_VERSION = '2.0.4';
-const APP_VERSION_DISPLAY = '2.0.4 Simple';
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzo-a3kIHxmS_M0PRZRnqlBexBuxYfTGCXRPXBtxCwSPNGUYJO85oLovNgxboX25OGF/exec";
+const APP_VERSION = '2.0.5';
+const APP_VERSION_DISPLAY = '2.0.5 Simple';
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwC2wUYuxTER4XYlEMbdO9tX7J8uQIRyvKq2B6Ej5iH1q2Pcjx0m4PEXhC8m9d7M3pv/exec";
 
 // Simplified Auth - Hanya simpan user di localStorage
 const AUTH_CONFIG = {
