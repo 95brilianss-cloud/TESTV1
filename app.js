@@ -710,20 +710,14 @@ async function batchRegisterUsers(usersArray, adminPassword) {
         
         return result;
         
-   } catch (error) {
-    console.error('Login error details:', error);
-    
-    // Network error handling yang lebih informatif
-    let errorMsg = 'Gagal terhubung ke server. Periksa koneksi internet.';
-    
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        errorMsg = 'Tidak dapat terhubung ke server.\n\nPastikan:\n• URL Web App sudah benar\n• Script sudah dideploy sebagai Web App\n• Tidak ada blocker CORS';
-    } else if (error.message && error.message.includes('JSON')) {
-        errorMsg = 'Response server tidak valid (bukan JSON). Cek deployment GAS.';
+    } catch (error) {
+        console.error('Batch registration error:', error);
+        showCustomAlert('Gagal terhubung ke server', 'error');
+        return {
+            success: false,
+            error: 'network_error'
+        };
     }
-    
-    showLoginError(errorMsg, 'warning');
-}
 }
 
 // ============================================
