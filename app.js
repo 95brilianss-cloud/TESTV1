@@ -8,13 +8,14 @@
 // ============================================
 // CONFIGURATION & CONSTANTS
 // ============================================
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
+const APP_VERSION_DISPLAY = '2.0.1 Secure';
 const GAS_URL = "https://script.google.com/macros/s/AKfycbyFytFTxcT1B1VZRkw8Tkdnqc9YEHHR_GCkJFGtRD_6uxDaSQnZ7Rd-p2DiWqgPla8h/exec";
 
 const AUTH_CONFIG = {
     SESSION_KEY: 'turbine_session_v2',
     USER_KEY: 'turbine_user_v2',
-    SESSION_DURATION: 8 * 60 * 60 * 1000, // 8 jam
+    SESSION_DURATION: 8 * 60 * 60 * 1000,
     MAX_LOGIN_ATTEMPTS: 5,
     LOCKOUT_KEY: 'login_lockout_until',
     FAILED_ATTEMPTS_KEY: 'failed_login_count',
@@ -213,6 +214,56 @@ let uploadProgressInterval = null;
 let currentUploadController = null;
 
 // ============================================
+// VERSION MANAGER - AUTO UPDATE DISPLAY
+// ============================================
+
+/**
+ * Update semua elemen versi di UI berdasarkan APP_VERSION
+ */
+function updateVersionDisplay() {
+    // Update document title
+    document.title = `Turbine Logsheet Pro v${APP_VERSION}`;
+    
+    // Update meta tag
+    const metaVersion = document.querySelector('meta[name="app-version"]');
+    if (metaVersion) {
+        metaVersion.setAttribute('content', APP_VERSION);
+    }
+    
+    // Update version di login footer
+    const versionTag = document.getElementById('versionDisplay');
+    if (versionTag) {
+        versionTag.textContent = `v${APP_VERSION_DISPLAY}`;
+    }
+    
+    // Update version di loader
+    const loaderVersion = document.getElementById('loaderVersion');
+    if (loaderVersion) {
+        loaderVersion.textContent = `v${APP_VERSION}`;
+    }
+    
+    // Update version di home screen
+    const homeVersion = document.getElementById('homeVersionDisplay');
+    if (homeVersion) {
+        homeVersion.textContent = APP_VERSION;
+    }
+    
+    // Update cache-busting untuk stylesheet
+    const mainStylesheet = document.getElementById('mainStylesheet');
+    if (mainStylesheet && !mainStylesheet.href.includes('?v=')) {
+        mainStylesheet.href = `style.css?v=${APP_VERSION}`;
+    }
+    
+    // Update cache-busting untuk manifest
+    const manifestLink = document.getElementById('manifestLink');
+    if (manifestLink && !manifestLink.href.includes('?v=')) {
+        manifestLink.href = `manifest.json?v=${APP_VERSION}`;
+    }
+    
+    console.log(`[Version Manager] UI Updated to v${APP_VERSION}`);
+}
+
+// ============================================
 // SERVICE WORKER REGISTRATION
 // ============================================
 if ('serviceWorker' in navigator) {
@@ -243,11 +294,7 @@ if ('serviceWorker' in navigator) {
 // ENHANCED AUTHENTICATION SYSTEM
 // ============================================
 
-/**
- * Inisialisasi Autentikasi - Check existing session
- */
 function initAuth() {
-    // Check client-side lockout first
     if (isClientLockedOut()) {
         showClientLockoutScreen();
         return;
@@ -301,13 +348,6 @@ function saveSession(user, rememberMe = false) {
 function isSessionValid(session) {
     if (!session || !session.expiresAt) return false;
     if (Date.now() > session.expiresAt) return false;
-    
-    // Validate token presence (if using token-based auth)
-    if (session.user && !session.user.sessionToken) {
-        // Backward compatibility: accept old format but refresh
-        return true;
-    }
-    
     return true;
 }
 
@@ -318,9 +358,6 @@ function clearSession() {
     isAuthenticated = false;
 }
 
-/**
- * Client-Side Lockout Management
- */
 function isClientLockedOut() {
     const lockoutUntil = localStorage.getItem(AUTH_CONFIG.LOCKOUT_KEY);
     if (lockoutUntil) {
@@ -328,7 +365,6 @@ function isClientLockedOut() {
         if (now < parseInt(lockoutUntil)) {
             return true;
         } else {
-            // Clear expired lockout
             localStorage.removeItem(AUTH_CONFIG.LOCKOUT_KEY);
             localStorage.removeItem(AUTH_CONFIG.FAILED_ATTEMPTS_KEY);
         }
@@ -342,13 +378,11 @@ function showClientLockoutScreen() {
     
     showLoginError(`Akun terkunci. Tunggu ${remainingMinutes} menit.`, 'locked');
     
-    // Disable inputs
     const inputs = document.querySelectorAll('#loginScreen input, #loginScreen button');
     inputs.forEach(el => {
         if (!el.classList.contains('alert-btn')) el.disabled = true;
     });
     
-    // Re-enable after lockout
     setTimeout(() => {
         inputs.forEach(el => el.disabled = false);
         hideLoginError();
@@ -360,9 +394,6 @@ function setClientLockout(minutes) {
     localStorage.setItem(AUTH_CONFIG.LOCKOUT_KEY, until.toString());
 }
 
-/**
- * Setup Login Listeners
- */
 function setupLoginListeners() {
     const nameInput = document.getElementById('operatorName');
     const passInput = document.getElementById('operatorPassword');
@@ -387,7 +418,6 @@ function setupLoginListeners() {
         });
     }
     
-    // Toggle password visibility
     const toggleBtn = document.getElementById('togglePassword');
     if (toggleBtn && passInput) {
         toggleBtn.addEventListener('click', () => {
@@ -415,26 +445,13 @@ function showLoginError(message, type = 'error') {
     errorMsg.style.display = 'block';
     
     if (type === 'warning') {
-        errorMsg.style.color = 'var(--warning)';
-        errorMsg.style.background = 'rgba(245, 158, 11, 0.1)';
-        errorMsg.style.borderColor = 'rgba(245, 158, 11, 0.2)';
+        errorMsg.classList.add('warning');
     } else if (type === 'locked') {
-        errorMsg.style.color = 'var(--danger)';
-        errorMsg.style.background = 'rgba(239, 68, 68, 0.15)';
-        errorMsg.style.borderColor = 'var(--danger)';
-        errorMsg.style.fontWeight = '600';
-    } else {
-        errorMsg.style.color = 'var(--danger)';
-        errorMsg.style.background = 'rgba(239, 68, 68, 0.1)';
-        errorMsg.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+        errorMsg.classList.add('locked');
     }
 }
 
-/**
- * Main Login Function - With Backend Verification
- */
 async function loginOperator() {
-    // Check client lockout
     if (isClientLockedOut()) {
         showClientLockoutScreen();
         return;
@@ -452,7 +469,6 @@ async function loginOperator() {
     const username = nameInput.value.trim();
     const password = passInput.value;
     
-    // Validation
     if (!username || !password) {
         showLoginError('Username dan password wajib diisi!');
         if (!username) nameInput.focus();
@@ -472,7 +488,6 @@ async function loginOperator() {
         return;
     }
     
-    // Show loading state
     const originalBtnText = loginBtn ? loginBtn.innerHTML : '';
     if (loginBtn) {
         loginBtn.disabled = true;
@@ -480,10 +495,8 @@ async function loginOperator() {
     }
     
     try {
-        // Get client IP (optional, for logging)
         const clientIP = await getClientIP().catch(() => 'unknown');
         
-        // Send to backend via HTTPS (CORS mode for JSON response)
         const response = await fetch(GAS_URL, {
             method: 'POST',
             mode: 'cors',
@@ -500,7 +513,6 @@ async function loginOperator() {
             })
         });
         
-        // Handle HTTP errors
         if (response.status === 429) {
             throw { error: 'too_many_requests', message: 'Terlalu banyak request. Silakan tunggu.' };
         }
@@ -508,10 +520,7 @@ async function loginOperator() {
         const result = await response.json();
         
         if (result.success) {
-            // Success - clear any failed attempts
             localStorage.removeItem(AUTH_CONFIG.FAILED_ATTEMPTS_KEY);
-            
-            // Save session
             saveSession(result.user, false);
             currentUser = result.user;
             isAuthenticated = true;
@@ -525,14 +534,12 @@ async function loginOperator() {
             }, 800);
             
         } else {
-            // Handle specific backend errors
             handleBackendLoginError(result, username);
         }
         
     } catch (error) {
         console.error('Login error:', error);
         
-        // Network error or parsing error
         if (error.error === 'too_many_requests') {
             showLoginError(error.message, 'warning');
         } else {
@@ -552,7 +559,6 @@ function handleBackendLoginError(result, username) {
     localStorage.setItem(AUTH_CONFIG.FAILED_ATTEMPTS_KEY, failedAttempts.toString());
     
     if (result.error === 'account_locked' || result.lockoutMinutes) {
-        // Server imposed lockout
         setClientLockout(result.lockoutMinutes || 30);
         showClientLockoutScreen();
         
@@ -563,14 +569,12 @@ function handleBackendLoginError(result, username) {
         showLoginError('Akun tidak aktif. Hubungi administrator.', 'locked');
         
     } else {
-        // Generic auth failure
         let msg = result.message || 'Username atau password salah';
         if (result.warning) {
             msg += ` (${result.warning})`;
         }
         showLoginError(msg);
         
-        // Check if we should client-lock based on accumulated failures
         if (failedAttempts >= AUTH_CONFIG.MAX_LOGIN_ATTEMPTS) {
             setClientLockout(30);
             showClientLockoutScreen();
@@ -580,14 +584,12 @@ function handleBackendLoginError(result, username) {
 
 function logoutOperator() {
     if (confirm('Apakah Anda yakin ingin keluar?')) {
-        // Backup drafts before logout
         if (Object.keys(currentInput).length > 0) {
             localStorage.setItem(DRAFT_KEYS.LOGSHEET_BACKUP, JSON.stringify(currentInput));
         }
         
         clearSession();
         
-        // Clear inputs
         const nameInput = document.getElementById('operatorName');
         const passInput = document.getElementById('operatorPassword');
         if (nameInput) nameInput.value = '';
@@ -604,12 +606,10 @@ function showLoginScreen() {
     const loginScreen = document.getElementById('loginScreen');
     if (loginScreen) {
         loginScreen.classList.add('active');
-        // Re-enable inputs if they were disabled by lockout
         const inputs = loginScreen.querySelectorAll('input, button');
         inputs.forEach(el => el.disabled = false);
     }
     
-    // Pre-fill username if remembered
     const savedUser = localStorage.getItem(AUTH_CONFIG.USER_KEY);
     if (savedUser) {
         try {
@@ -641,7 +641,6 @@ function updateUIForAuthenticatedUser() {
         if (el) el.textContent = currentUser.name;
     });
     
-    // Show admin features if applicable
     if (currentUser.role === 'admin') {
         document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
     }
@@ -671,11 +670,6 @@ async function getClientIP() {
 // BATCH REGISTRATION (Admin Only)
 // ============================================
 
-/**
- * Batch Register Users - Requires Admin Authentication
- * @param {Array} usersArray - Array of {username, password, role}
- * @param {string} adminPassword - Current admin password for verification
- */
 async function batchRegisterUsers(usersArray, adminPassword) {
     if (!currentUser || currentUser.role !== 'admin') {
         showCustomAlert('Hanya admin yang dapat menggunakan fitur ini!', 'error');
@@ -737,7 +731,6 @@ function showUploadProgress(title = 'Mengupload Data...') {
     turbine.classList.add('spinning');
     statusText.textContent = title;
     
-    // Reset steps
     document.querySelectorAll('.step').forEach((step, idx) => {
         step.classList.remove('active', 'completed');
         if (idx === 0) step.classList.add('active');
@@ -864,10 +857,10 @@ function cancelUpload() {
 // ============================================
 
 window.addEventListener('DOMContentLoaded', () => {
-    totalParams = Object.values(AREAS).reduce((acc, arr) => acc + arr.length, 0);
+    // Update versi pertama kali
+    updateVersionDisplay();
     
-    const versionDisplay = document.getElementById('versionDisplay');
-    if (versionDisplay) versionDisplay.textContent = APP_VERSION;
+    totalParams = Object.values(AREAS).reduce((acc, arr) => acc + arr.length, 0);
     
     initAuth();
     setupLoginListeners();
@@ -2562,3 +2555,49 @@ function toggleSS2000Detail() {
         detail.style.display = select.value ? 'block' : 'none';
     }
 }
+
+// Expose functions yang dibutuhkan global
+window.updateVersionDisplay = updateVersionDisplay;
+window.navigateTo = navigateTo;
+window.loginOperator = loginOperator;
+window.logoutOperator = logoutOperator;
+window.openArea = openArea;
+window.saveStep = saveStep;
+window.goBack = goBack;
+window.jumpToStep = jumpToStep;
+window.handleStatusChange = handleStatusChange;
+window.sendToSheet = sendToSheet;
+window.openTPMArea = openTPMArea;
+window.selectTPMStatus = selectTPMStatus;
+window.handleTPMPhoto = handleTPMPhoto;
+window.submitTPMData = submitTPMData;
+window.submitBalancingData = submitBalancingData;
+window.loadLastBalancingData = loadLastBalancingData;
+window.resetBalancingForm = resetBalancingForm;
+window.handleEksporInput = handleEksporInput;
+window.calculateLPBalance = calculateLPBalance;
+window.toggleSS2000Detail = toggleSS2000Detail;
+window.showCustomAlert = showCustomAlert;
+window.closeAlert = closeAlert;
+window.applyUpdate = applyUpdate;
+window.cancelUpload = cancelUpload;
+window.installPWA = installPWA;
+window.hideCustomInstallBanner = hideCustomInstallBanner;
+window.openBatchRegistration = () => {
+    const modal = document.getElementById('batchRegisterModal');
+    if (modal) modal.classList.remove('hidden');
+};
+window.closeBatchModal = () => {
+    const modal = document.getElementById('batchRegisterModal');
+    if (modal) modal.classList.add('hidden');
+};
+window.executeBatchRegister = () => {
+    // Implementasi batch register
+    showCustomAlert('Fitur batch register - Hubungi developer untuk implementasi lengkap', 'info');
+};
+window.showForgotPassword = () => {
+    showCustomAlert('Silakan hubungi administrator untuk reset password', 'info');
+};
+window.contactAdmin = () => {
+    window.open('https://wa.me/6281234567890?text=Halo%20Admin%20Turbine%20Log', '_blank');
+};
