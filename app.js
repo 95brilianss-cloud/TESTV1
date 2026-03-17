@@ -8,9 +8,9 @@
 // ============================================
 // CONFIGURATION & CONSTANTS
 // ============================================
-const APP_VERSION = '2.0.1';
-const APP_VERSION_DISPLAY = '2.0.1 Secure';
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyFytFTxcT1B1VZRkw8Tkdnqc9YEHHR_GCkJFGtRD_6uxDaSQnZ7Rd-p2DiWqgPla8h/exec";
+const APP_VERSION = '2.0.2';
+const APP_VERSION_DISPLAY = '2.0.2 Secure';
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxris_Q9d4k1KEHSjQSDQ-LbkHa0b4JcOKa7hAM_73k6lmy8--ZtZAj7GhlUFOG1aq2/exec";
 
 const AUTH_CONFIG = {
     SESSION_KEY: 'turbine_session_v2',
