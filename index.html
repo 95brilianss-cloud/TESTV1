@@ -7,6 +7,7 @@
     <!-- Security Meta Tags -->
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="referrer" content="strict-origin-when-cross-origin">
+    <meta name="app-version" content="2.0.0">
     
     <!-- Theme Colors -->
     <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
@@ -28,10 +29,8 @@
     <meta name="author" content="Unit Utilitas 3B">
     <meta name="robots" content="noindex, nofollow">
     
-    <!-- Manifest -->
-    <link rel="manifest" href="manifest.json?v=2.0.0">
-    
-    <!-- Icons -->
+    <!-- Manifest & Icons -->
+    <link rel="manifest" href="manifest.json" id="manifestLink">
     <link rel="apple-touch-icon" href="icon-192x192.png">
     <link rel="apple-touch-icon" sizes="512x512" href="icon-512x512.png">
     <link rel="icon" type="image/png" href="icon-192x192.png">
@@ -43,7 +42,7 @@
     
     <title>Turbine Logsheet Pro</title>
     
-    <!-- Critical CSS Inline untuk Loading Screen -->
+    <!-- Critical CSS Inline -->
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { 
@@ -51,11 +50,11 @@
             background: #0f172a; 
             color: #f8fafc;
             min-height: 100vh;
+            overflow-x: hidden;
         }
-        .screen { display: none; min-height: 100vh; }
+        .screen { display: none; min-height: 100vh; position: relative; }
         .screen.active { display: block; }
         #loginScreen.active { display: flex !important; flex-direction: column; }
-        #balancingScreen.active { display: block; }
         
         /* Loader Styles */
         .loader-overlay {
@@ -63,6 +62,7 @@
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
             z-index: 10000;
+            transition: opacity 0.5s ease;
         }
         .loader-content {
             display: flex; flex-direction: column;
@@ -75,19 +75,20 @@
         }
         .turbine-logo-large svg {
             width: 100%; height: 100%;
-            animation: spin 2s linear infinite;
-            filter: drop-shadow(0 0 15px rgba(14, 165, 233, 0.4));
+            animation: spin 3s linear infinite;
+            filter: drop-shadow(0 0 20px rgba(14, 165, 233, 0.5));
         }
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
         }
         .loader-text h3 {
-            font-size: 1.5rem; font-weight: 700; margin: 0 0 12px 0;
+            font-size: 1.5rem; font-weight: 700; margin: 0 0 8px 0;
             color: #f8fafc; letter-spacing: 0.5px;
         }
-        .loader-text p {
-            font-size: 0.9375rem; color: #94a3b8; margin: 0 0 32px 0;
+        .version-text {
+            font-size: 0.875rem; color: #64748b; margin-bottom: 24px;
+            font-family: monospace;
         }
         .progress-bar-loader {
             width: 200px; height: 4px;
@@ -120,7 +121,7 @@
             background: #1e293b;
         }
         
-        /* Spinner for Login Button */
+        /* Spinner */
         .spinner {
             display: inline-block; width: 16px; height: 16px;
             border: 2px solid rgba(255,255,255,0.3);
@@ -129,7 +130,7 @@
             margin-right: 8px; vertical-align: middle;
         }
         
-        /* Password Toggle Button */
+        /* Password Toggle */
         #togglePassword {
             position: absolute; right: 12px; top: 50%;
             transform: translateY(-50%);
@@ -139,9 +140,8 @@
             transition: all 0.2s; z-index: 10;
         }
         #togglePassword:hover { color: #94a3b8; }
-        #togglePassword:active { transform: translateY(-50%) scale(0.9); }
         
-        /* Error Message Styles */
+        /* Error Message */
         .login-error {
             color: #ef4444; font-size: 0.875rem;
             text-align: center; margin-top: 12px; padding: 10px;
@@ -169,12 +169,20 @@
             50% { opacity: 0.7; }
         }
         
-        /* Admin-only elements (hidden by default) */
+        /* Admin-only */
         .admin-only { display: none !important; }
+        
+        /* Utility */
+        .hidden { display: none !important; }
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
     </style>
     
-    <!-- Main Stylesheet -->
-    <link rel="stylesheet" href="style.css?v=2.0.0">
+    <!-- Main Stylesheet (akan di-load dinamis dengan version) -->
+    <link rel="stylesheet" href="style.css" id="mainStylesheet">
 </head>
 <body>
 
@@ -194,7 +202,8 @@
         </div>
         <div class="loader-text">
             <h3>Utilitas 3B</h3>
-            <p>Sinkronisasi Data...</p>
+            <div class="version-text" id="loaderVersion">v2.0.0</div>
+            <p style="font-size: 0.9375rem; color: #94a3b8; margin: 0 0 32px 0;">Sinkronisasi Data...</p>
             <div class="progress-bar-loader">
                 <div class="fill" id="loaderProgress" style="width: 0%"></div>
             </div>
@@ -228,13 +237,13 @@
 
 <div class="app-container">
     
-    <!-- LOGIN SCREEN - ENHANCED WITH PASSWORD -->
+    <!-- LOGIN SCREEN -->
     <div id="loginScreen" class="screen active">
         <div class="login-container">
             <div class="login-header">
                 <div class="logo-container animated">
                     <img src="logo.png" alt="Logo" id="loginLogo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-                    <div class="logo-fallback" style="display:none;">⚡</div>
+                    <div class="logo-fallback" style="display:none; font-size: 4rem;">⚡</div>
                 </div>
                 <h1 class="app-title">TURBINE LOGSHEET</h1>
                 <p class="app-subtitle">PT Petrokimia Gresik • Unit III B</p>
@@ -242,46 +251,37 @@
                         
             <div class="login-form glass">
                 <h2 class="login-title" style="text-align: center; margin-bottom: 8px;">Secure Login</h2>
-                <p style="text-align: center; color: var(--text-muted); font-size: 0.875rem; margin-bottom: 20px;">Masukkan kredensial operator</p>
+                <p style="text-align: center; color: #94a3b8; font-size: 0.875rem; margin-bottom: 20px;">Masukkan kredensial operator</p>
                                 
-                <!-- Username Input -->
                 <div class="input-group">
-                    <label style="display: block; font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500;">Username / NPK</label>
+                    <label style="display: block; font-size: 0.875rem; color: #94a3b8; margin-bottom: 6px; font-weight: 500;">Username / NPK</label>
                     <input type="text" id="operatorName" class="login-input" placeholder="Masukkan username" autocomplete="username" enterkeyhint="next" spellcheck="false">
                 </div>
                 
-                <!-- Password Input dengan Toggle -->
-                <div class="input-group" style="position: relative;">
-                    <label style="display: block; font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500;">Password</label>
+                <div class="input-group" style="position: relative; margin-top: 16px;">
+                    <label style="display: block; font-size: 0.875rem; color: #94a3b8; margin-bottom: 6px; font-weight: 500;">Password</label>
                     <div style="position: relative;">
                         <input type="password" id="operatorPassword" class="login-input" placeholder="Masukkan password" autocomplete="current-password" enterkeyhint="go">
                         <button type="button" id="togglePassword" title="Lihat password">👁️</button>
                     </div>
                 </div>
                 
-                <!-- Error Message Container -->
                 <p id="loginError" class="login-error"></p>
                 
-                <!-- Login Button -->
-                <button class="btn btn-primary btn-full" onclick="loginOperator()" style="margin-top: 24px; min-height: 48px;">
+                <button class="btn btn-primary btn-full" onclick="loginOperator()" style="margin-top: 24px; min-height: 48px; width: 100%;">
                     <span>🔐 Masuk Sistem</span>
                 </button>
                 
-                <!-- Help Links -->
                 <div style="margin-top: 16px; text-align: center; display: flex; justify-content: center; gap: 16px;">
-                    <a href="#" onclick="showForgotPassword()" style="font-size: 0.75rem; color: var(--text-muted); text-decoration: none; hover: {color: var(--primary-light)}">
-                        Lupa password?
-                    </a>
-                    <span style="color: var(--border);">•</span>
-                    <a href="#" onclick="contactAdmin()" style="font-size: 0.75rem; color: var(--text-muted); text-decoration: none;">
-                        Hubungi Admin
-                    </a>
+                    <a href="#" onclick="showForgotPassword()" style="font-size: 0.75rem; color: #64748b; text-decoration: none;">Lupa password?</a>
+                    <span style="color: #334155;">•</span>
+                    <a href="#" onclick="contactAdmin()" style="font-size: 0.75rem; color: #64748b; text-decoration: none;">Hubungi Admin</a>
                 </div>
             </div>
             
             <div class="login-footer" style="text-align: center; margin-top: auto; padding-top: 24px;">
-                <p style="font-size: 0.75rem; color: var(--text-muted);">Sistem Terproteksi • SSL Encrypted</p>
-                <span class="version-tag" style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: rgba(14, 165, 233, 0.1); color: #38bdf8; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">
+                <p style="font-size: 0.75rem; color: #64748b;">Sistem Terproteksi • SSL Encrypted</p>
+                <span id="versionDisplay" class="version-tag" style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: rgba(14, 165, 233, 0.1); color: #38bdf8; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; font-family: monospace;">
                     v2.0.0 Secure
                 </span>
             </div>
@@ -311,7 +311,7 @@
             <div class="home-hero-content">
                 <div class="logo-container small animated">
                     <img src="logo.png" alt="Logo" id="mainLogo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-                    <div class="logo-fallback" style="display:none;">⚡</div>
+                    <div class="logo-fallback" style="display:none; font-size: 2.5rem;">⚡</div>
                 </div>
                 <h1 class="home-title">LOGSHEET DIGITAL</h1>
                 <p class="home-subtitle">Pilih Menu Untuk Memulai</p>
@@ -358,7 +358,7 @@
                 </div>
             </div>
             
-            <!-- Admin Menu (Hidden by default, shown via JS for admin role) -->
+            <!-- Admin Menu -->
             <div class="menu-card admin-only" onclick="openBatchRegistration()" style="border-left: 4px solid #8b5cf6; display: none;">
                 <div class="menu-icon" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);">
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -370,6 +370,11 @@
                     <p>Batch Register Operators</p>
                 </div>
             </div>
+        </div>
+        
+        <!-- Version Info di Home -->
+        <div style="text-align: center; margin-top: 32px; opacity: 0.5; font-size: 0.75rem; color: #64748b;">
+            Turbine Logsheet Pro <span id="homeVersionDisplay">v2.0.0</span>
         </div>
     </div>
 
@@ -975,6 +980,6 @@
     </div>
 </div>
 
-<script src="app.js?v=2.0.0"></script>
+<script src="app.js"></script>
 </body>
 </html>
