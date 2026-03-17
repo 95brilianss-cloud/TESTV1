@@ -9,7 +9,7 @@
 // CONFIGURATION & CONSTANTS
 // ============================================
 const APP_VERSION = '2.0.0';
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwZfKzCXuFVRxqYCnhY90Y8ejFFDSJxdHyp8DxN5shCgfI__0d25E0EIWbEi3pPgnsT/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwH2BK8Q8oXTkkWbF2RpDT6spE-wifnEvdCTgUxQSLQ9amCquSSmuUjMNMW_xXWpdSY/exec";
 
 const AUTH_CONFIG = {
     SESSION_KEY: 'turbine_session_v2',
