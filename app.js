@@ -1,7 +1,8 @@
 // ============================================
-// TURBINE LOGSHEET PRO - VERSION CONTROL
+// TURBINE LOGSHEET PRO - FULL APPLICATION
+// Version: 1.4.0
 // ============================================
-const APP_VERSION = '1.3.3'; 
+const APP_VERSION = '1.4.0';
 
 // ============================================
 // CONFIGURATION & CONSTANTS
@@ -9,6 +10,7 @@ const APP_VERSION = '1.3.3';
 const AUTH_CONFIG = {
     SESSION_KEY: 'turbine_session',
     USER_KEY: 'turbine_user',
+    USERS_CACHE_KEY: 'turbine_users_cache',
     SESSION_DURATION: 8 * 60 * 60 * 1000,
     REMEMBER_ME_DURATION: 30 * 24 * 60 * 60 * 1000
 };
@@ -40,7 +42,14 @@ const BALANCING_FIELDS = [
     'kegiatanShift'
 ];
 
-const GAS_URL = "https://script.google.com/macros/s/AKfycby0iHrjLFueUtWqNPAU4YqU3poAwKiIXXkcZVj4HYQDgfaoEkKOrPktYsTaHWOJCV_5/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyh3VprXqhZuHk-hOG0giC8M40CfUZPMPinhQg2FrAZgQx2GaTcp2UrZMHZgXXCtiyV/exec";
+
+// Legacy users untuk fallback offline
+const OFFLINE_USERS = {
+    'admin': { password: 'admin123', role: 'admin', name: 'Administrator', department: 'Unit Utilitas 3B' },
+    'operator': { password: 'operator123', role: 'operator', name: 'Operator Shift', department: 'Unit Utilitas 3B' },
+    'utilitas3b': { password: 'pgresik2024', role: 'operator', name: 'Unit Utilitas 3B', department: 'Unit Utilitas 3B' }
+};
 
 const INPUT_TYPES = {
     PUMP_STATUS: {
@@ -198,6 +207,7 @@ let currentInputType = 'text';
 let autoCloseTimer = null;
 let currentUser = null;
 let isAuthenticated = false;
+let usersCache = null;
 let activeTPMArea = '';
 let currentTPMPhoto = null;
 let currentTPMStatus = '';
@@ -234,8 +244,9 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================
-// AUTHENTICATION FUNCTIONS
+// USER AUTHENTICATION SYSTEM
 // ============================================
+
 function initAuth() {
     const session = getSession();
     
@@ -252,16 +263,248 @@ function initAuth() {
         clearSession();
         showLoginScreen();
     }
+    
+    loadUsersCache();
 }
 
-function getSession() {
+async function loginOperator() {
+    const usernameInput = document.getElementById('operatorUsername');
+    const passwordInput = document.getElementById('operatorPassword');
+    const errorMsg = document.getElementById('loginError');
+    const loginBtn = document.querySelector('#loginScreen .btn-primary');
+    
+    if (!usernameInput || !passwordInput) {
+        console.error('Login inputs not found');
+        return;
+    }
+    
+    const username = usernameInput.value.trim().toLowerCase();
+    const password = passwordInput.value.trim();
+    
+    if (!username) {
+        showLoginError('Username wajib diisi!');
+        usernameInput.focus();
+        return;
+    }
+    
+    if (!password) {
+        showLoginError('Password wajib diisi!');
+        passwordInput.focus();
+        return;
+    }
+    
+    if (username.length < 3) {
+        showLoginError('Username minimal 3 karakter!');
+        usernameInput.focus();
+        return;
+    }
+    
+    if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.innerHTML = '<span>⏳ Memverifikasi...</span>';
+    }
+    
+    hideLoginError();
+    
     try {
-        const sessionData = localStorage.getItem(AUTH_CONFIG.SESSION_KEY);
-        return sessionData ? JSON.parse(sessionData) : null;
+        const result = await validateUserOnline(username, password);
+        
+        if (result.success) {
+            handleLoginSuccess(result.user, username, password);
+        } else {
+            const offlineResult = validateUserOffline(username, password);
+            
+            if (offlineResult.success) {
+                handleLoginSuccess(offlineResult.user, username, password, true);
+                showCustomAlert('Login offline berhasil! (Mode Local)', 'warning');
+            } else {
+                showLoginError(result.error || offlineResult.error || 'Login gagal');
+                if (loginBtn) {
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = '<span>Masuk</span>';
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        
+        const offlineResult = validateUserOffline(username, password);
+        
+        if (offlineResult.success) {
+            handleLoginSuccess(offlineResult.user, username, password, true);
+            showCustomAlert('Login offline (tidak ada koneksi)', 'warning');
+        } else {
+            showLoginError('Gagal terhubung ke server. Periksa koneksi internet.');
+            if (loginBtn) {
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<span>Masuk</span>';
+            }
+        }
+    }
+}
+
+async function validateUserOnline(username, password) {
+    return new Promise((resolve, reject) => {
+        const callbackName = 'loginCallback_' + Date.now();
+        const timeout = setTimeout(() => {
+            reject(new Error('Timeout'));
+        }, 10000);
+        
+        window[callbackName] = (response) => {
+            clearTimeout(timeout);
+            delete window[callbackName];
+            resolve(response);
+        };
+        
+        const script = document.createElement('script');
+        script.src = `${GAS_URL}?action=login&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&callback=${callbackName}`;
+        
+        script.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error('Network error'));
+        };
+        
+        document.body.appendChild(script);
+    });
+}
+
+function validateUserOffline(username, password) {
+    username = username.toLowerCase().trim();
+    
+    const cachedUsers = loadUsersCache();
+    if (cachedUsers && cachedUsers[username]) {
+        const user = cachedUsers[username];
+        if (user.password === password) {
+            if (user.status === 'INACTIVE') {
+                return { success: false, error: 'User tidak aktif' };
+            }
+            return { 
+                success: true, 
+                user: {
+                    username: user.username,
+                    name: user.name,
+                    role: user.role,
+                    department: user.department
+                }
+            };
+        }
+        return { success: false, error: 'Password salah' };
+    }
+    
+    const legacyUser = OFFLINE_USERS[username];
+    if (!legacyUser) {
+        return { success: false, error: 'User tidak ditemukan' };
+    }
+    
+    if (legacyUser.password !== password) {
+        return { success: false, error: 'Password salah' };
+    }
+    
+    return { 
+        success: true, 
+        user: {
+            username: username,
+            name: legacyUser.name,
+            role: legacyUser.role,
+            department: legacyUser.department
+        }
+    };
+}
+
+function handleLoginSuccess(userData, username, password, isOffline = false) {
+    currentUser = {
+        username: userData.username,
+        name: userData.name,
+        role: userData.role,
+        department: userData.department,
+        id: 'OP-' + Date.now().toString(36).toUpperCase(),
+        loginTime: new Date().toISOString(),
+        isOffline: isOffline
+    };
+    
+    isAuthenticated = true;
+    
+    saveSession(currentUser, false);
+    localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(currentUser));
+    
+    if (!isOffline) {
+        updateUserCache(username, password, userData);
+    }
+    
+    const loginBtn = document.querySelector('#loginScreen .btn-primary');
+    if (loginBtn) {
+        loginBtn.innerHTML = '<span>✓ Berhasil!</span>';
+    }
+    
+    showCustomAlert(`Selamat datang, ${userData.name}!`, 'success');
+    
+    setTimeout(() => {
+        updateUIForAuthenticatedUser();
+        navigateTo('homeScreen');
+        loadUserStats();
+        
+        if (loginBtn) {
+            loginBtn.disabled = false;
+            loginBtn.innerHTML = '<span>Masuk</span>';
+        }
+        
+        const passwordInput = document.getElementById('operatorPassword');
+        if (passwordInput) passwordInput.value = '';
+    }, 800);
+}
+
+function updateUserCache(username, password, userData) {
+    let cache = loadUsersCache() || {};
+    cache[username.toLowerCase()] = {
+        username: userData.username || username,
+        password: password,
+        role: userData.role,
+        name: userData.name,
+        department: userData.department,
+        status: 'ACTIVE',
+        lastSync: new Date().toISOString()
+    };
+    localStorage.setItem(AUTH_CONFIG.USERS_CACHE_KEY, JSON.stringify(cache));
+    usersCache = cache;
+}
+
+function loadUsersCache() {
+    if (usersCache) return usersCache;
+    try {
+        const cache = localStorage.getItem(AUTH_CONFIG.USERS_CACHE_KEY);
+        usersCache = cache ? JSON.parse(cache) : null;
+        return usersCache;
     } catch (e) {
-        console.error('Error reading session:', e);
         return null;
     }
+}
+
+function logoutOperator() {
+    if (confirm('Apakah Anda yakin ingin keluar?')) {
+        if (Object.keys(currentInput).length > 0) {
+            localStorage.setItem(DRAFT_KEYS.LOGSHEET_BACKUP, JSON.stringify(currentInput));
+        }
+        
+        clearSession();
+        currentUser = null;
+        isAuthenticated = false;
+        
+        const usernameInput = document.getElementById('operatorUsername');
+        const passwordInput = document.getElementById('operatorPassword');
+        if (usernameInput) usernameInput.value = '';
+        if (passwordInput) passwordInput.value = '';
+        
+        const adminBtn = document.getElementById('adminPanelBtn');
+        if (adminBtn) adminBtn.remove();
+        
+        showLoginScreen();
+        showCustomAlert('Anda telah keluar dari sistem.', 'success');
+    }
+}
+
+function isSessionValid(session) {
+    if (!session || !session.expiresAt) return false;
+    return Date.now() < session.expiresAt;
 }
 
 function saveSession(user, rememberMe = false) {
@@ -275,116 +518,59 @@ function saveSession(user, rememberMe = false) {
     
     try {
         localStorage.setItem(AUTH_CONFIG.SESSION_KEY, JSON.stringify(session));
-        localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(user));
     } catch (e) {
         console.error('Error saving session:', e);
     }
 }
 
-function isSessionValid(session) {
-    if (!session || !session.expiresAt) return false;
-    return Date.now() < session.expiresAt;
+function getSession() {
+    try {
+        const sessionData = localStorage.getItem(AUTH_CONFIG.SESSION_KEY);
+        return sessionData ? JSON.parse(sessionData) : null;
+    } catch (e) {
+        return null;
+    }
 }
 
 function clearSession() {
     localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
     localStorage.removeItem(AUTH_CONFIG.USER_KEY);
-    currentUser = null;
-    isAuthenticated = false;
 }
 
-function loginOperator() {
-    const nameInput = document.getElementById('operatorName');
+function showLoginError(message) {
     const errorMsg = document.getElementById('loginError');
+    const usernameInput = document.getElementById('operatorUsername');
+    const passwordInput = document.getElementById('operatorPassword');
     
-    if (!nameInput) {
-        console.error('Login input not found');
-        return;
+    if (errorMsg) {
+        errorMsg.textContent = message;
+        errorMsg.style.display = 'block';
+        errorMsg.style.color = '#ef4444';
+        errorMsg.style.fontSize = '0.875rem';
+        errorMsg.style.marginTop = '8px';
+        errorMsg.style.textAlign = 'center';
+        errorMsg.style.padding = '8px';
+        errorMsg.style.background = 'rgba(239, 68, 68, 0.1)';
+        errorMsg.style.borderRadius = '8px';
+        errorMsg.style.border = '1px solid rgba(239, 68, 68, 0.2)';
     }
     
-    const operatorName = nameInput.value.trim();
-    
-    if (!operatorName) {
-        if (errorMsg) {
-            errorMsg.textContent = 'Nama operator wajib diisi!';
-            errorMsg.style.display = 'block';
-        }
-        nameInput.focus();
-        nameInput.classList.add('error');
-        return;
-    }
-    
-    if (operatorName.length < 3) {
-        if (errorMsg) {
-            errorMsg.textContent = 'Nama minimal 3 karakter!';
-            errorMsg.style.display = 'block';
-        }
-        nameInput.focus();
-        nameInput.classList.add('error');
-        return;
-    }
-    
-    if (errorMsg) errorMsg.style.display = 'none';
-    nameInput.classList.remove('error');
-    
-    const user = {
-        name: operatorName,
-        id: 'OP-' + Date.now().toString(36).toUpperCase(),
-        loginTime: new Date().toISOString(),
-        role: 'operator'
-    };
-    
-    saveSession(user, false);
-    currentUser = user;
-    isAuthenticated = true;
-    
-    showCustomAlert(`Selamat datang, ${operatorName}!`, 'success');
-    
-    setTimeout(() => {
-        updateUIForAuthenticatedUser();
-        navigateTo('homeScreen');
-        loadUserStats();
-    }, 800);
+    if (usernameInput) usernameInput.style.borderColor = '#ef4444';
+    if (passwordInput) passwordInput.style.borderColor = '#ef4444';
 }
 
-function logoutOperator() {
-    if (confirm('Apakah Anda yakin ingin keluar?')) {
-        if (Object.keys(currentInput).length > 0) {
-            localStorage.setItem(DRAFT_KEYS.LOGSHEET_BACKUP, JSON.stringify(currentInput));
-        }
-        
-        clearSession();
-        
-        const nameInput = document.getElementById('operatorName');
-        if (nameInput) nameInput.value = '';
-        
-        showLoginScreen();
-        showCustomAlert('Anda telah keluar dari sistem.', 'success');
-    }
-}
-
-function showLoginScreen() {
-    document.querySelectorAll('.screen').forEach(s => {
-        s.classList.remove('active');
-    });
+function hideLoginError() {
+    const errorMsg = document.getElementById('loginError');
+    const usernameInput = document.getElementById('operatorUsername');
+    const passwordInput = document.getElementById('operatorPassword');
     
-    const loginScreen = document.getElementById('loginScreen');
-    if (loginScreen) {
-        loginScreen.classList.add('active');
+    if (errorMsg) {
+        errorMsg.style.display = 'none';
+        errorMsg.textContent = '';
     }
     
-    const savedUser = localStorage.getItem(AUTH_CONFIG.USER_KEY);
-    if (savedUser) {
-        try {
-            const user = JSON.parse(savedUser);
-            const nameInput = document.getElementById('operatorName');
-            if (nameInput && user.name) {
-                nameInput.value = user.name;
-            }
-        } catch (e) {
-            console.error('Error parsing saved user:', e);
-        }
-    }
+    if (usernameInput) usernameInput.style.borderColor = '';
+    if (passwordInput) passwordInput.style.borderColor = '';
 }
 
 function updateUIForAuthenticatedUser() {
@@ -401,8 +587,20 @@ function updateUIForAuthenticatedUser() {
     
     userElements.forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.textContent = currentUser.name;
+        if (el) el.textContent = currentUser.name || currentUser.username;
     });
+    
+    if (currentUser.role === 'admin') {
+        const homeHeader = document.querySelector('.home-header .user-info');
+        if (homeHeader && !homeHeader.querySelector('.admin-badge')) {
+            const badge = document.createElement('span');
+            badge.className = 'admin-badge';
+            badge.style.cssText = 'background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.65rem; font-weight: 700; margin-left: 4px; text-transform: uppercase;';
+            badge.textContent = 'Admin';
+            homeHeader.appendChild(badge);
+        }
+        setTimeout(addAdminButton, 100);
+    }
 }
 
 function requireAuth() {
@@ -415,31 +613,464 @@ function requireAuth() {
     return true;
 }
 
-function loadUserStats() {
-    const totalAreas = Object.keys(AREAS).length;
-    let completedAreas = 0;
-    
-    Object.entries(AREAS).forEach(([areaName, params]) => {
-        const filled = currentInput[areaName] ? Object.keys(currentInput[areaName]).length : 0;
-        if (filled === params.length && filled > 0) completedAreas++;
+function showLoginScreen() {
+    document.querySelectorAll('.screen').forEach(s => {
+        s.classList.remove('active');
     });
     
-    const statProgress = document.getElementById('statProgress');
-    const statAreas = document.getElementById('statAreas');
-    
-    if (statProgress) {
-        const percent = Math.round((completedAreas / totalAreas) * 100);
-        statProgress.textContent = `${percent}%`;
+    const loginScreen = document.getElementById('loginScreen');
+    if (loginScreen) {
+        loginScreen.classList.add('active');
     }
     
-    if (statAreas) {
-        statAreas.textContent = `${completedAreas}/${totalAreas}`;
+    const savedUser = localStorage.getItem(AUTH_CONFIG.USER_KEY);
+    if (savedUser) {
+        try {
+            const user = JSON.parse(savedUser);
+            const usernameInput = document.getElementById('operatorUsername');
+            if (usernameInput && user.username) {
+                usernameInput.value = user.username;
+                const passwordInput = document.getElementById('operatorPassword');
+                if (passwordInput) passwordInput.focus();
+            }
+        } catch (e) {
+            console.error('Error parsing saved user:', e);
+        }
+    }
+}
+
+function isAdmin() {
+    return currentUser && currentUser.role === 'admin';
+}
+
+// ============================================
+// USER MANAGEMENT (ADMIN ONLY)
+// ============================================
+
+function addAdminButton() {
+    if (!isAdmin()) return;
+    if (document.getElementById('adminPanelBtn')) return;
+    
+    const menuGrid = document.querySelector('.menu-grid');
+    if (!menuGrid) return;
+    
+    const adminCard = document.createElement('div');
+    adminCard.className = 'menu-card danger';
+    adminCard.id = 'adminPanelBtn';
+    adminCard.style.cssText = 'border-left: 4px solid #ef4444; margin-top: 12px; cursor: pointer;';
+    adminCard.onclick = showUserManagement;
+    
+    adminCard.innerHTML = `
+        <div class="menu-icon" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+        </div>
+        <div class="menu-content">
+            <h3>Manajemen User</h3>
+            <p>Tambah/Edit/Hapus Operator</p>
+        </div>
+    `;
+    
+    menuGrid.appendChild(adminCard);
+}
+
+function showUserManagement() {
+    if (!isAdmin()) {
+        showCustomAlert('Akses ditolak. Hanya admin yang bisa mengakses.', 'error');
+        return;
+    }
+    
+    const modal = document.createElement('div');
+    modal.id = 'userManagementModal';
+    modal.style.cssText = 'position: fixed; inset: 0; background: rgba(15, 23, 42, 0.98); z-index: 10003; overflow-y: auto; padding: 20px;';
+    
+    modal.innerHTML = `
+        <div style="max-width: 480px; margin: 0 auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 16px; background: rgba(30, 41, 59, 0.8); border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.2);">
+                <h2 style="margin: 0; font-size: 1.25rem;">👥 Manajemen User</h2>
+                <button onclick="closeUserManagement()" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 8px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <div id="userListContainer" style="margin-bottom: 20px;">
+                <div style="text-align: center; padding: 40px; color: #64748b;">
+                    ⏳ Memuat data user...
+                </div>
+            </div>
+            
+            <button onclick="showAddUserForm()" style="width: 100%; padding: 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Tambah User Baru
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    document.body.style.overflow = 'hidden';
+    loadUserList();
+}
+
+function closeUserManagement() {
+    const modal = document.getElementById('userManagementModal');
+    if (modal) {
+        modal.remove();
+        document.body.style.overflow = '';
+    }
+}
+
+async function loadUserList() {
+    const container = document.getElementById('userListContainer');
+    if (!container) return;
+    
+    try {
+        const result = await fetchUsersFromServer();
+        
+        if (result.success) {
+            renderUserList(result.users);
+            updateUsersCache(result.users);
+        } else {
+            throw new Error(result.error);
+        }
+    } catch (error) {
+        const cached = loadUsersCache();
+        if (cached) {
+            const usersArray = Object.values(cached);
+            renderUserList(usersArray);
+            container.insertAdjacentHTML('afterbegin', `
+                <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 0.875rem; color: #f59e0b;">
+                    ⚠️ Mode offline - Menampilkan data dari cache
+                </div>
+            `);
+        } else {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #ef4444;">
+                    ❌ Gagal memuat data user<br>
+                    <small style="color: #64748b;">${error.message}</small>
+                </div>
+            `;
+        }
+    }
+}
+
+function fetchUsersFromServer() {
+    return new Promise((resolve, reject) => {
+        if (!currentUser || !currentUser.username) {
+            reject(new Error('Tidak ada user yang login'));
+            return;
+        }
+        
+        const callbackName = 'usersCallback_' + Date.now();
+        const timeout = setTimeout(() => reject(new Error('Timeout')), 10000);
+        
+        window[callbackName] = (response) => {
+            clearTimeout(timeout);
+            delete window[callbackName];
+            resolve(response);
+        };
+        
+        const script = document.createElement('script');
+        script.src = `${GAS_URL}?action=getUsers&adminUser=${encodeURIComponent(currentUser.username)}&adminPass=admin123&callback=${callbackName}`;
+        
+        script.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error('Network error'));
+        };
+        
+        document.body.appendChild(script);
+    });
+}
+
+function renderUserList(users) {
+    const container = document.getElementById('userListContainer');
+    if (!container) return;
+    
+    if (!users || users.length === 0) {
+        container.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;">Tidak ada user</div>';
+        return;
+    }
+    
+    let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+    
+    users.forEach(user => {
+        const isActive = user.status === 'ACTIVE';
+        const isAdmin = user.role === 'admin';
+        const isCurrentUser = user.username.toLowerCase() === (currentUser.username || '').toLowerCase();
+        
+        html += `
+            <div style="background: rgba(30, 41, 59, 0.8); border: 1px solid ${isActive ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}; border-radius: 12px; padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                    <div>
+                        <div style="font-weight: 600; font-size: 1rem; color: ${isActive ? '#f8fafc' : '#64748b'};">
+                            ${user.name || user.username}
+                            ${isCurrentUser ? '<span style="font-size: 0.7rem; background: rgba(14, 165, 233, 0.2); color: #38bdf8; padding: 2px 6px; border-radius: 4px; margin-left: 8px;">Anda</span>' : ''}
+                        </div>
+                        <div style="font-size: 0.875rem; color: #94a3b8; margin-top: 2px;">
+                            @${user.username} • ${user.department || 'Unit Utilitas 3B'}
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 4px;">
+                        <span style="padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; background: ${isAdmin ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.2)'}; color: ${isAdmin ? '#f59e0b' : '#94a3b8'};">
+                            ${user.role}
+                        </span>
+                        <span style="padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; background: ${isActive ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}; color: ${isActive ? '#10b981' : '#ef4444'};">
+                            ${user.status || 'ACTIVE'}
+                        </span>
+                    </div>
+                </div>
+                
+                <div style="background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                    <div style="font-size: 0.75rem; color: #ef4444; margin-bottom: 4px; font-weight: 600;">🔓 Password (Plaintext):</div>
+                    <div style="font-family: monospace; font-size: 0.875rem; color: #f87171; letter-spacing: 1px;">${user.password}</div>
+                </div>
+                
+                <div style="display: flex; gap: 8px;">
+                    ${!isCurrentUser ? `
+                        <button onclick="toggleUserStatus('${user.username}')" style="flex: 1; padding: 10px; background: ${isActive ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${isActive ? '#ef4444' : '#10b981'}; border: 1px solid ${isActive ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}; border-radius: 8px; font-size: 0.875rem; cursor: pointer;">
+                            ${isActive ? '🔒 Nonaktifkan' : '🔓 Aktifkan'}
+                        </button>
+                        <button onclick="deleteUser('${user.username}')" style="padding: 10px 16px; background: rgba(100, 116, 139, 0.1); color: #64748b; border: 1px solid rgba(100, 116, 139, 0.3); border-radius: 8px; font-size: 0.875rem; cursor: pointer;">
+                            🗑️
+                        </button>
+                    ` : '<div style="flex: 1; text-align: center; color: #64748b; font-size: 0.875rem; padding: 10px;">Tidak dapat mengedit diri sendiri</div>'}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function updateUsersCache(usersArray) {
+    let cache = {};
+    usersArray.forEach(user => {
+        cache[user.username.toLowerCase()] = user;
+    });
+    localStorage.setItem(AUTH_CONFIG.USERS_CACHE_KEY, JSON.stringify(cache));
+    usersCache = cache;
+}
+
+function showAddUserForm() {
+    const modal = document.getElementById('userManagementModal');
+    if (!modal) return;
+    
+    modal.setAttribute('data-old-content', modal.innerHTML);
+    
+    modal.innerHTML = `
+        <div style="max-width: 480px; margin: 0 auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 16px; background: rgba(30, 41, 59, 0.8); border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.2);">
+                <h2 style="margin: 0; font-size: 1.25rem;">➕ Tambah User Baru</h2>
+                <button onclick="restoreUserManagement()" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 8px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <form id="addUserForm" style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                    <label style="display: block; font-size: 0.875rem; color: #94a3b8; margin-bottom: 6px;">Username *</label>
+                    <input type="text" id="newUsername" required style="width: 100%; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 2px solid rgba(148, 163, 184, 0.2); border-radius: 8px; color: white; font-size: 1rem;">
+                </div>
+                
+                <div>
+                    <label style="display: block; font-size: 0.875rem; color: #94a3b8; margin-bottom: 6px;">Password (Plaintext) *</label>
+                    <input type="text" id="newPassword" required style="width: 100%; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 2px solid rgba(148, 163, 184, 0.2); border-radius: 8px; color: white; font-size: 1rem;">
+                    <small style="color: #64748b; font-size: 0.75rem;">⚠️ Password akan disimpan dalam bentuk plaintext</small>
+                </div>
+                
+                <div>
+                    <label style="display: block; font-size: 0.875rem; color: #94a3b8; margin-bottom: 6px;">Nama Lengkap *</label>
+                    <input type="text" id="newName" required style="width: 100%; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 2px solid rgba(148, 163, 184, 0.2); border-radius: 8px; color: white; font-size: 1rem;">
+                </div>
+                
+                <div>
+                    <label style="display: block; font-size: 0.875rem; color: #94a3b8; margin-bottom: 6px;">Role *</label>
+                    <select id="newRole" required style="width: 100%; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 2px solid rgba(148, 163, 184, 0.2); border-radius: 8px; color: white; font-size: 1rem;">
+                        <option value="operator">Operator</option>
+                        <option value="admin">Administrator</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label style="display: block; font-size: 0.875rem; color: #94a3b8; margin-bottom: 6px;">Department</label>
+                    <input type="text" id="newDepartment" value="Unit Utilitas 3B" style="width: 100%; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 2px solid rgba(148, 163, 184, 0.2); border-radius: 8px; color: white; font-size: 1rem;">
+                </div>
+                
+                <button type="submit" style="width: 100%; padding: 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 8px;">
+                    Simpan User Baru
+                </button>
+            </form>
+        </div>
+    `;
+    
+    setTimeout(() => {
+        const form = document.getElementById('addUserForm');
+        if (form) form.addEventListener('submit', handleAddUser);
+    }, 100);
+}
+
+function restoreUserManagement() {
+    const modal = document.getElementById('userManagementModal');
+    if (modal && modal.getAttribute('data-old-content')) {
+        modal.innerHTML = modal.getAttribute('data-old-content');
+        loadUserList();
+    }
+}
+
+async function handleAddUser(e) {
+    e.preventDefault();
+    
+    const formData = {
+        username: document.getElementById('newUsername').value.trim().toLowerCase(),
+        password: document.getElementById('newPassword').value,
+        name: document.getElementById('newName').value.trim(),
+        role: document.getElementById('newRole').value,
+        department: document.getElementById('newDepartment').value.trim()
+    };
+    
+    if (!formData.username || !formData.password || !formData.name) {
+        showCustomAlert('Semua field wajib diisi!', 'error');
+        return;
+    }
+    
+    if (formData.username.length < 3) {
+        showCustomAlert('Username minimal 3 karakter!', 'error');
+        return;
+    }
+    
+    if (formData.password.length < 4) {
+        showCustomAlert('Password minimal 4 karakter!', 'error');
+        return;
+    }
+    
+    try {
+        const result = await addUserToServer(formData);
+        
+        if (result.success) {
+            showCustomAlert('User berhasil ditambahkan!', 'success');
+            restoreUserManagement();
+            updateUserCache(formData.username, formData.password, formData);
+        } else {
+            showCustomAlert(result.error || 'Gagal menambahkan user', 'error');
+        }
+    } catch (error) {
+        updateUserCache(formData.username, formData.password, {
+            ...formData,
+            status: 'ACTIVE'
+        });
+        showCustomAlert('User disimpan secara lokal (mode offline)', 'warning');
+        restoreUserManagement();
+    }
+}
+
+function addUserToServer(userData) {
+    return new Promise((resolve, reject) => {
+        const payload = {
+            type: 'USER_MANAGEMENT',
+            action: 'add',
+            adminUser: currentUser.username,
+            adminPass: 'admin123',
+            userData: userData
+        };
+        
+        fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(() => resolve({ success: true }))
+        .catch(reject);
+    });
+}
+
+async function toggleUserStatus(username) {
+    if (!confirm(`Yakin ingin mengubah status user @${username}?`)) return;
+    
+    try {
+        const payload = {
+            type: 'USER_MANAGEMENT',
+            action: 'toggle',
+            adminUser: currentUser.username,
+            adminPass: 'admin123',
+            targetUsername: username
+        };
+        
+        await fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        showCustomAlert('Status user diubah', 'success');
+        loadUserList();
+    } catch (error) {
+        const cache = loadUsersCache();
+        if (cache && cache[username.toLowerCase()]) {
+            const currentStatus = cache[username.toLowerCase()].status || 'ACTIVE';
+            cache[username.toLowerCase()].status = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+            localStorage.setItem(AUTH_CONFIG.USERS_CACHE_KEY, JSON.stringify(cache));
+        }
+        loadUserList();
+        showCustomAlert('Status diubah secara lokal (mode offline)', 'warning');
+    }
+}
+
+async function deleteUser(username) {
+    if (!confirm(`Yakin ingin menghapus user @${username}?`)) return;
+    
+    if (username.toLowerCase() === currentUser.username.toLowerCase()) {
+        showCustomAlert('Tidak bisa menghapus diri sendiri!', 'error');
+        return;
+    }
+    
+    try {
+        const payload = {
+            type: 'USER_MANAGEMENT',
+            action: 'delete',
+            adminUser: currentUser.username,
+            adminPass: 'admin123',
+            targetUsername: username
+        };
+        
+        await fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        showCustomAlert('User berhasil dihapus', 'success');
+        loadUserList();
+    } catch (error) {
+        const cache = loadUsersCache();
+        if (cache && cache[username.toLowerCase()]) {
+            delete cache[username.toLowerCase()];
+            localStorage.setItem(AUTH_CONFIG.USERS_CACHE_KEY, JSON.stringify(cache));
+        }
+        loadUserList();
+        showCustomAlert('User dihapus secara lokal (mode offline)', 'warning');
     }
 }
 
 // ============================================
-// UPLOAD PROGRESS MANAGER (BARU)
+// UPLOAD PROGRESS MANAGER
 // ============================================
+
 function showUploadProgress(title = 'Mengupload Data...') {
     const overlay = document.getElementById('uploadProgressOverlay');
     const percentage = document.getElementById('progressPercentage');
@@ -447,21 +1078,18 @@ function showUploadProgress(title = 'Mengupload Data...') {
     const turbine = document.getElementById('uploadTurbine');
     const statusText = document.getElementById('uploadStatusText');
     
-    // Reset states
     overlay.classList.remove('hidden', 'success', 'error');
     percentage.textContent = '0%';
     ringFill.style.strokeDashoffset = 339.292;
     turbine.classList.add('spinning');
     statusText.textContent = title;
     
-    // Reset steps
     document.querySelectorAll('.step').forEach((step, idx) => {
         step.classList.remove('active', 'completed');
         if (idx === 0) step.classList.add('active');
     });
     document.querySelectorAll('.step-line').forEach(line => line.classList.remove('active'));
     
-    // Start simulated progress
     let progress = 0;
     let currentStep = 1;
     
@@ -589,6 +1217,7 @@ function cancelUpload() {
 // ============================================
 // UI & NAVIGATION FUNCTIONS
 // ============================================
+
 window.addEventListener('DOMContentLoaded', () => {
     totalParams = Object.values(AREAS).reduce((acc, arr) => acc + arr.length, 0);
     
@@ -605,15 +1234,27 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupLoginListeners() {
-    const nameInput = document.getElementById('operatorName');
-    if (nameInput) {
-        nameInput.addEventListener('input', () => {
-            nameInput.classList.remove('error');
-            const errorMsg = document.getElementById('loginError');
-            if (errorMsg) errorMsg.style.display = 'none';
+    const usernameInput = document.getElementById('operatorUsername');
+    const passwordInput = document.getElementById('operatorPassword');
+    
+    if (usernameInput) {
+        usernameInput.addEventListener('input', () => {
+            hideLoginError();
         });
         
-        nameInput.addEventListener('keypress', (e) => {
+        usernameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                if (passwordInput) passwordInput.focus();
+            }
+        });
+    }
+    
+    if (passwordInput) {
+        passwordInput.addEventListener('input', () => {
+            hideLoginError();
+        });
+        
+        passwordInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 loginOperator();
             }
@@ -751,8 +1392,6 @@ function navigateTo(screenId) {
     
     document.querySelectorAll('.screen').forEach(s => {
         s.classList.remove('active');
-        s.style.animation = 'none';
-        setTimeout(() => s.style.animation = '', 10);
     });
     
     const targetScreen = document.getElementById(screenId);
@@ -768,15 +1407,39 @@ function navigateTo(screenId) {
             updateOverallProgress();
         } else if (screenId === 'homeScreen') {
             loadUserStats();
+            setTimeout(addAdminButton, 100);
         } else if (screenId === 'balancingScreen') {
             initBalancingScreen();
         }
     }
 }
 
+function loadUserStats() {
+    const totalAreas = Object.keys(AREAS).length;
+    let completedAreas = 0;
+    
+    Object.entries(AREAS).forEach(([areaName, params]) => {
+        const filled = currentInput[areaName] ? Object.keys(currentInput[areaName]).length : 0;
+        if (filled === params.length && filled > 0) completedAreas++;
+    });
+    
+    const statProgress = document.getElementById('statProgress');
+    const statAreas = document.getElementById('statAreas');
+    
+    if (statProgress) {
+        const percent = Math.round((completedAreas / totalAreas) * 100);
+        statProgress.textContent = `${percent}%`;
+    }
+    
+    if (statAreas) {
+        statAreas.textContent = `${completedAreas}/${totalAreas}`;
+    }
+}
+
 // ============================================
 // LOGSHEET FUNCTIONS
 // ============================================
+
 function fetchLastData() {
     updateStatusIndicator(false);
     const timeout = setTimeout(() => renderMenu(), 8000);
@@ -1290,9 +1953,6 @@ function goBack() {
     }
 }
 
-// ============================================
-// SEND TO SHEET (UPDATED WITH PROGRESS)
-// ============================================
 async function sendToSheet() {
     if (!requireAuth()) return;
     
@@ -1352,6 +2012,7 @@ async function sendToSheet() {
 // ============================================
 // TPM FUNCTIONS
 // ============================================
+
 function updateTPMUserInfo() {
     if (!currentUser) return;
     
@@ -1467,9 +2128,6 @@ function selectTPMStatus(status) {
     }
 }
 
-// ============================================
-// SUBMIT TPM (UPDATED WITH PROGRESS)
-// ============================================
 async function submitTPMData() {
     if (!requireAuth()) return;
     
@@ -1544,6 +2202,7 @@ async function submitTPMData() {
 // ============================================
 // BALANCING FUNCTIONS
 // ============================================
+
 function saveBalancingDraft() {
     try {
         const draftData = {};
@@ -1561,7 +2220,6 @@ function saveBalancingDraft() {
         draftData._userId = currentUser ? currentUser.id : 'unknown';
         
         localStorage.setItem(DRAFT_KEYS.BALANCING, JSON.stringify(draftData));
-        console.log('Balancing draft saved');
         updateDraftStatusIndicator();
         
     } catch (e) {
@@ -1573,10 +2231,7 @@ function loadBalancingDraft() {
     try {
         const draftData = JSON.parse(localStorage.getItem(DRAFT_KEYS.BALANCING));
         
-        if (!draftData) {
-            console.log('No balancing draft found');
-            return false;
-        }
+        if (!draftData) return false;
         
         let loadedCount = 0;
         BALANCING_FIELDS.forEach(fieldId => {
@@ -1594,10 +2249,6 @@ function loadBalancingDraft() {
         
         calculateLPBalance();
         
-        if (loadedCount > 0) {
-            showCustomAlert(`Draft tersimpan ditemukan! ${loadedCount} field telah diisi.`, 'success');
-        }
-        
         return loadedCount > 0;
         
     } catch (e) {
@@ -1609,7 +2260,6 @@ function loadBalancingDraft() {
 function clearBalancingDraft() {
     try {
         localStorage.removeItem(DRAFT_KEYS.BALANCING);
-        console.log('Balancing draft cleared');
         updateDraftStatusIndicator();
     } catch (e) {
         console.error('Error clearing balancing draft:', e);
@@ -1665,18 +2315,6 @@ function updateDraftStatusIndicator() {
     if (indicator) {
         const hasDraft = localStorage.getItem(DRAFT_KEYS.BALANCING) !== null;
         indicator.style.display = hasDraft ? 'flex' : 'none';
-        if (hasDraft) {
-            indicator.innerHTML = `
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10 9 9 9 8 9"/>
-                </svg>
-                <span>Draft tersimpan</span>
-            `;
-        }
     }
 }
 
@@ -2113,9 +2751,6 @@ function formatWhatsAppMessage(data) {
     return message;
 }
 
-// ============================================
-// SUBMIT BALANCING (UPDATED WITH PROGRESS)
-// ============================================
 async function submitBalancingData() {
     if (!requireAuth()) return;
     
@@ -2236,6 +2871,14 @@ async function submitBalancingData() {
         setTimeout(() => {
             showCustomAlert('Gagal mengirim. Data disimpan lokal.', 'error');
         }, 500);
+    }
+}
+
+function toggleSS2000Detail() {
+    const select = document.getElementById('ss2000Via');
+    const detail = document.getElementById('ss2000Detail');
+    if (select && detail) {
+        detail.style.display = select.value ? 'block' : 'none';
     }
 }
 
@@ -2430,19 +3073,6 @@ function isAppInstalled() {
            document.referrer.includes('android-app://');
 }
 
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes scaleIn {
-        from { transform: translate(-50%, -50%) scale(0.9); opacity: 0; }
-        to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-    }
-    @keyframes fadeOut {
-        from { opacity: 1; }
-        to { opacity: 0; }
-    }
-`;
-document.head.appendChild(style);
-
 function showToast(msg, type) {
     console.log(`[${type}] ${msg}`);
 }
@@ -2458,12 +3088,3 @@ document.addEventListener('keydown', (e) => {
         goBack();
     }
 });
-
-// Toggle SS2000 Detail visibility
-function toggleSS2000Detail() {
-    const select = document.getElementById('ss2000Via');
-    const detail = document.getElementById('ss2000Detail');
-    if (select && detail) {
-        detail.style.display = select.value ? 'block' : 'none';
-    }
-}
